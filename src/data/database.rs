@@ -150,11 +150,11 @@ impl Database {
         let anime_iter = stmt.query_map([id], |row| {
             let updated_at_str: String = row.get(11)?;
             let updated_at = DateTime::parse_from_rfc3339(&updated_at_str)
-                .map_err(|_| {
-                    rusqlite::Error::InvalidColumnType(
+                .map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
                         11,
-                        "DateTime".to_string(),
-                        "DateTime".to_string(),
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
                     )
                 })?
                 .with_timezone(&Utc);
@@ -239,22 +239,22 @@ impl Database {
         let list_iter = stmt.query_map(params.as_slice(), |row| {
             let entry_updated_at_str: String = row.get(6)?;
             let entry_updated_at = DateTime::parse_from_rfc3339(&entry_updated_at_str)
-                .map_err(|_| {
-                    rusqlite::Error::InvalidColumnType(
+                .map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
                         6,
-                        "DateTime".to_string(),
-                        "DateTime".to_string(),
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
                     )
                 })?
                 .with_timezone(&Utc);
 
             let anime_updated_at_str: String = row.get(18)?;
             let anime_updated_at = DateTime::parse_from_rfc3339(&anime_updated_at_str)
-                .map_err(|_| {
-                    rusqlite::Error::InvalidColumnType(
+                .map_err(|e| {
+                    rusqlite::Error::FromSqlConversionFailure(
                         18,
-                        "DateTime".to_string(),
-                        "DateTime".to_string(),
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
                     )
                 })?
                 .with_timezone(&Utc);
@@ -319,17 +319,25 @@ impl Database {
         &self,
     ) -> SqlResult<Option<(i32, String, Option<String>, Option<DateTime<Utc>>)>> {
         let mut stmt = self.conn.prepare(
-            "SELECT user_id, access_token, refresh_token
+            "SELECT user_id, access_token, refresh_token, expires_at
                 FROM user_auth
                 ORDER BY updated_at DESC
                 LIMIT 1",
         )?;
 
         let auth_iter = stmt.query_map([], |row| {
+            let expires_at_str: Option<String> = row.get(3)?;
+            let expires_at = expires_at_str.and_then(|s| {
+                DateTime::parse_from_rfc3339(&s)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .ok()
+            });
+
             Ok((
                 row.get(0)?, // user_id
                 row.get(1)?, // access_token
                 row.get(2)?, // refresh token
+                expires_at,  // expires_at parsed as DateTime<Utc>
             ))
         })?;
 

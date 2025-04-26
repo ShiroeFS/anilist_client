@@ -6,6 +6,6 @@ mod theme;
 pub use app::AniListApp;
 
 // Re-export useful components
-pub use components::anime_card::AnimeCard;
-pub use components::media_list::MediaList;
-pub use components::user_stats::UserStats;
+// pub use components::anime_card::AnimeCard;
+// pub use components::media_list::MediaList;
+// pub use components::user_stats::UserStats;

@@ -1,5 +1,5 @@
 use iced::widget::{button, column, container, row, scrollable, text, text_input};
-use iced::{Application, Command, Element, Length, Settings, Subscription, Theme};
+use iced::{Application, Command, Element, Length, Subscription, Theme};
 
 use crate::api::auth::AuthManager;
 use crate::api::client::AniListClient;

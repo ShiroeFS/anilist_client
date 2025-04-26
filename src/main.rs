@@ -6,6 +6,7 @@ mod utils;
 use api::auth::AuthManager;
 use api::client::AniListClient;
 use data::database::Database;
+use iced::{Application, Settings};
 use ui::AniListApp;
 use utils::config::{Config, load_config};
 
@@ -25,7 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Check for stored authentication
     let auth_info = db.get_auth()?;
-    let authenticated_client = if let Some((user_id, token, _)) = auth_info {
+    let authenticated_client = if let Some((user_id, token, _, _)) = auth_info {
         println!("Loaded stored authentication for user ID: {}", user_id);
         AniListClient::with_token(token)
     } else {
@@ -44,13 +45,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Start the UI
     let app = AniListApp::new(authenticated_client, db, auth_manager);
 
-    // Start the application - this will need to be implemented properly
-    // with iced's run method
+    // Start the application
     println!("Starting AniList Desktop Client...");
 
-    // Placeholder for actual application launch
-    // In a complete app, you'd use something like:
-    // iced::run(Settings::with_flags(app))?;
+    iced::run(Settings::with_flags(())).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
     Ok(())
 }
