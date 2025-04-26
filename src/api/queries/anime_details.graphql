@@ -1,0 +1,61 @@
+query AnimeDetails($id: Int) {
+  Media(id: $id, type: ANIME) {
+    id
+    title {
+      romaji
+      english
+      native
+    }
+    description
+    episodes
+    duration
+    genres
+    averageScore
+    status
+    season
+    seasonYear
+    format
+    startDate {
+      year
+      month
+      day
+    }
+    endDate {
+      year
+      month
+      day
+    }
+    coverImage {
+      large
+      medium
+    }
+    bannerImage
+    tags {
+      id
+      name
+      category
+    }
+    studios {
+      edges {
+        node {
+          id
+          name
+        }
+      }
+    }
+    characters(sort: ROLE) {
+      edges {
+        node {
+          id
+          name {
+            full
+          }
+          image {
+            medium
+          }
+        }
+        role
+      }
+    }
+  }
+}

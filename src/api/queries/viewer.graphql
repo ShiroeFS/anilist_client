@@ -1,0 +1,26 @@
+query Viewer {
+  Viewer {
+    id
+    name
+    avatar {
+      medium
+    }
+    options {
+      displayAdultContent
+      airingStatusNotifications
+      titleLanguage
+      scoreFormat
+    }
+    mediaListOptions {
+      scoreFormat
+      animeList {
+        customLists
+        sectionOrder
+      }
+      mangaList {
+        customLists
+        sectionOrder
+      }
+    }
+  }
+}

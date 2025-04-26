@@ -1,0 +1,88 @@
+schema {
+  query: query
+  mutation: Mutation
+}
+
+type Query {
+  Media(id: Int, type: MediaType): Media
+  User(id: Int, name: String): User
+  MediaList(
+    id: Int
+    mediaId: Int
+    userName: String
+    type: MediaType
+    status: MediaListStatus
+  ): MediaList
+}
+
+type Mutation {
+  SaveMediaListEntry(
+    id: Int
+    mediaId: Int
+    status: MediaListStatus
+    score: Float
+    progress: Int
+  ): MediaList
+}
+
+enum MediaType {
+  ANIME
+  MANGA
+}
+
+enum MediaListStatus {
+  CURRENT
+  PLANNING
+  COMPLETED
+  DROPPED
+  PAUSED
+  REPEATING
+}
+
+type Media {
+  id: Int!
+  title: MediaTitle
+  description: String
+  episodes: Int
+  duration: Int
+  genres: [String]
+  averageScore: Float
+  coverImage: MediaCoverImage
+  bannerImage: String
+  status: String
+  format: String
+}
+
+type MediaTitle {
+  romaji: String
+  english: String
+  native: String
+}
+
+type MediaCoverImage {
+  large: String
+  medium: String
+}
+
+type User {
+  id: Int!
+  name: String!
+  avatar: UserAvatar
+  bannerImage: String
+}
+
+type UserAvatar {
+  large: String
+  medium: String
+}
+
+type MediaList {
+  id: Int!
+  userId: Int!
+  mediaId: Int!
+  status: MediaListStatus!
+  score: Float
+  progress: Int
+  updatedAt: Int!
+  media: Media
+}

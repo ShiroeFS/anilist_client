@@ -1,0 +1,34 @@
+query UserAnimeList($userId: Int, $status: MediaListStatus) {
+  MediaListCollection(userId: $userId, type: ANIME, status: $status) {
+    lists {
+      name
+      status
+      entries {
+        id
+        mediaId
+        status
+        score
+        progress
+        updatedAt
+        media {
+          id
+          title {
+            romaji
+            english
+            native
+          }
+          coverImage {
+            medium
+          }
+          episodes
+          nextAiringEpisode {
+            airingAt
+            episode
+          }
+          format
+          status
+        }
+      }
+    }
+  }
+}
