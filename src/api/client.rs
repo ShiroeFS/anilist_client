@@ -5,11 +5,15 @@ use serde::{Deserialize, Serialize};
 // Define the GraphQL query
 #[derive(GraphQLQuery)]
 #[graphql(
-    schema_path = "graphql/schema.graphql",
-    query_path = "graphql/queries/anime_details.graphql",
+    schema_path = "src/api/queries/schema.graphql",
+    query_path = "src/api/queries/anime_details.graphql",
     response_derives = "Debug, Serialize, Deserialize"
 )]
 pub struct AnimeDetails;
+
+// Define the namespace that contains the generated types
+pub use crate::api::client::anime_details::ResponseData as AnimeDetailsResponse;
+pub use crate::api::client::anime_details::Variables as AnimeDetailsVariables;
 
 // Main API client
 pub struct AniListClient {
