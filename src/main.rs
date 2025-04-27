@@ -1,13 +1,14 @@
 mod api;
+mod app;
 mod data;
 mod ui;
 mod utils;
 
 use api::auth::AuthManager;
 use api::client::AniListClient;
+use app::AniListApp;
 use data::database::Database;
 use iced::{Application, Settings};
-use ui::AniListApp;
 use utils::config::{Config, load_config};
 
 #[tokio::main]
@@ -33,7 +34,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         api_client
     };
 
-    // Initialize authentication manager if needed
+    // Initialize authentication manager
     let auth_config = api::auth::AuthConfig {
         client_id: config.auth_config.client_id.clone(),
         client_secret: config.auth_config.client_secret.clone(),
@@ -42,17 +43,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let auth_manager = AuthManager::new(auth_config);
 
-    // Start the UI
-    // Skipping the actual app launch for now to avoid issues
+    // Create the application instance
+    let app = AniListApp::new(authenticated_client, db, auth_manager);
+
+    // Start the iced application
     println!("Starting AniList Desktop Client...");
 
-    // In a real app, you would uncomment this:
-    <AniListApp as Application>::run(Settings::with_flags((
-        authenticated_client,
-        db,
-        auth_manager,
-    )))
-    .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+    // Create settings and launch the app
+    let settings = Settings::with_flags((authenticated_client, db, auth_manager));
+    AniListApp::run(settings)?;
 
     Ok(())
 }
