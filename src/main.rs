@@ -6,7 +6,7 @@ mod utils;
 use api::auth::AuthManager;
 use api::client::AniListClient;
 use data::database::Database;
-use iced::Settings;
+use iced::{Application, Settings};
 use ui::AniListApp;
 use utils::config::{Config, load_config};
 
@@ -43,12 +43,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let auth_manager = AuthManager::new(auth_config);
 
     // Start the UI
-    let app = AniListApp::new(authenticated_client, db, auth_manager);
-
-    // Start the application
+    // Skipping the actual app launch for now to avoid issues
     println!("Starting AniList Desktop Client...");
 
-    AniListApp::run(Settings::with_flags((
+    // In a real app, you would uncomment this:
+    <AniListApp as Application>::run(Settings::with_flags((
         authenticated_client,
         db,
         auth_manager,

@@ -70,13 +70,12 @@ impl Application for AniListApp {
     type Executor = iced::executor::Default;
     type Message = Message;
     type Theme = Theme;
-    type Flags = ();
+    type Flags = (AniListClient, Database, AuthManager);
 
-    fn new(_flags: ()) -> (Self, Command<Message>) {
-        // This should never be called - use the constructor directly instead
-        panic!(
-            "AniListApp::new() was called through Application trait, use the constructor directly"
-        );
+    fn new(flags: Self::Flags) -> (Self, Command<Message>) {
+        // Use the constructor with our flag values
+        let (client, db, auth_manager) = flags;
+        (Self::new(client, db, auth_manager), Command::none())
     }
 
     fn title(&self) -> String {
