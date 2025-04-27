@@ -1,19 +1,15 @@
 use graphql_client::{GraphQLQuery, Response};
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
 
 // Define the GraphQL query
 #[derive(GraphQLQuery)]
 #[graphql(
     schema_path = "src/api/queries/schema.graphql",
     query_path = "src/api/queries/anime_details.graphql",
-    response_derives = "Debug, Serialize, Deserialize"
+    response_derives = "Debug, Clone",
+    variable_derives = "Debug, Clone"
 )]
-pub struct AnimeDetails;
-
-// Define the namespace that contains the generated types
-pub use crate::api::client::anime_details::ResponseData as AnimeDetailsResponse;
-pub use crate::api::client::anime_details::Variables as AnimeDetailsVariables;
+pub struct AnimeDetailsQuery;
 
 // Main API client
 pub struct AniListClient {
@@ -40,9 +36,9 @@ impl AniListClient {
     pub async fn get_anime_details(
         &self,
         id: i32,
-    ) -> Result<anime_details::ResponseData, Box<dyn std::error::Error>> {
-        let variables = anime_details::Variables { id: Some(id) };
-        let request_body = AnimeDetails::build_query(variables);
+    ) -> Result<anime_details_query::ResponseData, Box<dyn std::error::Error>> {
+        let variables = anime_details_query::Variables { id: Some(id) };
+        let request_body = AnimeDetailsQuery::build_query(variables);
 
         let mut request_builder = self.client.post(&self.endpoint).json(&request_body);
 
@@ -52,7 +48,7 @@ impl AniListClient {
         }
 
         let response = request_builder.send().await?;
-        let response_body: Response<anime_details::ResponseData> = response.json().await?;
+        let response_body: Response<anime_details_query::ResponseData> = response.json().await?;
 
         match response_body.data {
             Some(data) => Ok(data),

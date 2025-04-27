@@ -6,7 +6,7 @@ mod utils;
 use api::auth::AuthManager;
 use api::client::AniListClient;
 use data::database::Database;
-use iced::{Application, Settings};
+use iced::Settings;
 use ui::AniListApp;
 use utils::config::{Config, load_config};
 
@@ -48,7 +48,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Start the application
     println!("Starting AniList Desktop Client...");
 
-    iced::run(Settings::with_flags(())).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+    AniListApp::run(Settings::with_flags((
+        authenticated_client,
+        db,
+        auth_manager,
+    )))
+    .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
     Ok(())
 }

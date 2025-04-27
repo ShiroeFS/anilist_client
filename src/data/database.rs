@@ -231,8 +231,9 @@ impl Database {
 
         let mut stmt = self.conn.prepare(query)?;
 
-        let params: Vec<&dyn rusqlite::ToSql> = match status {
-            Some(status_str) => vec![&user_id, &status_str],
+        let status_string = status.map(|s| s.to_string());
+        let params: Vec<&dyn rusqlite::ToSql> = match &status_string {
+            Some(status_str) => vec![&user_id, status_str],
             None => vec![&user_id],
         };
 
