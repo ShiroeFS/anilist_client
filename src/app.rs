@@ -1,5 +1,5 @@
 use iced::widget::{button, column, container, row, scrollable, text, text_input};
-use iced::{Application, Command, Element, Length, Subscription, Theme};
+use iced::{Application, Command, Element, Length, Settings, Subscription, Theme};
 
 use crate::api::auth::AuthManager;
 use crate::api::client::AniListClient;
@@ -76,11 +76,23 @@ impl Application for AniListApp {
     type Executor = iced::executor::Default;
     type Message = Message;
     type Theme = Theme;
-    type Flags = (AniListClient, Database, AuthManager);
+    type Flags = ();
 
-    fn new(flags: Self::Flags) -> (Self, Command<Message>) {
-        // Use the constructor with our flag values
-        let (client, db, auth_manager) = flags;
+    fn new(_flags: ()) -> (Self, Command<Message>) {
+        // This should never be called directly - use the constructor instead
+        let client = AniListClient::new();
+
+        // We need to create a minimal instance for iced's initialization
+        // In a real app, we would pass proper configured objects or flags
+        let db = Database::new().unwrap_or_else(|_| panic!("Failed to initialize database"));
+
+        let auth_config = crate::api::auth::AuthConfig {
+            client_id: "default".to_string(),
+            client_secret: "default".to_string(),
+            redirect_uri: "http://localhost:8080/callback".to_string(),
+        };
+
+        let auth_manager = AuthManager::new(auth_config);
         (Self::new(client, db, auth_manager), Command::none())
     }
 
@@ -136,7 +148,7 @@ impl Application for AniListApp {
                 // Fetch anime details
                 Command::perform(
                     async move {
-                        // this would be an API call in real app
+                        // This would be an API call in real app
                         Ok(AnimeDetails {
                             id,
                             title: "Cowboy Bebop".to_string(),

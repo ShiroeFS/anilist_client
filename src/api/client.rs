@@ -1,6 +1,6 @@
 use crate::api::models::{Media, User};
 use crate::utils::error::AppError;
-use graphql_client::{GraphQLQuery, Response};
+use graphql_client::*;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 #[graphql(
     schema_path = "src/api/queries/schema.graphql",
     query_path = "src/api/queries/anime_details.graphql",
-    response_derives = "Debug, Serialize, Deserialize"
+    response_derives = "Debug, Clone, Serialize, Deserialize"
 )]
 pub struct AnimeDetails;
 
@@ -17,7 +17,7 @@ pub struct AnimeDetails;
 #[graphql(
     schema_path = "src/api/queries/schema.graphql",
     query_path = "src/api/queries/anime_search.graphql",
-    response_derives = "Debug, Serialize, Deserialize"
+    response_derives = "Debug, Clone, Serialize, Deserialize"
 )]
 pub struct AnimeSearch;
 
@@ -25,7 +25,7 @@ pub struct AnimeSearch;
 #[graphql(
     schema_path = "src/api/queries/schema.graphql",
     query_path = "src/api/queries/user_anime_list.graphql",
-    response_derives = "Debug, Serialize, Deserialize"
+    response_derives = "Debug, Clone, Serialize, Deserialize"
 )]
 pub struct UserAnimeList;
 
@@ -33,7 +33,7 @@ pub struct UserAnimeList;
 #[graphql(
     schema_path = "src/api/queries/schema.graphql",
     query_path = "src/api/queries/user_profile.graphql",
-    response_derives = "Debug, Serialize, Deserialize"
+    response_derives = "Debug, Clone, Serialize, Deserialize"
 )]
 pub struct UserProfile;
 
@@ -41,7 +41,7 @@ pub struct UserProfile;
 #[graphql(
     schema_path = "src/api/queries/schema.graphql",
     query_path = "src/api/queries/viewer.graphql",
-    response_derives = "Debug, Serialize, Deserialize"
+    response_derives = "Debug, Clone, Serialize, Deserialize"
 )]
 pub struct Viewer;
 
@@ -49,7 +49,7 @@ pub struct Viewer;
 #[graphql(
     schema_path = "src/api/queries/schema.graphql",
     query_path = "src/api/queries/update_media_list.graphql",
-    response_derives = "Debug, Serialize, Deserialize"
+    response_derives = "Debug, Clone, Serialize, Deserialize"
 )]
 pub struct UpdateMediaList;
 
@@ -75,6 +75,7 @@ impl AniListClient {
         client
     }
 
+    // Generic function to execute GraphQL queries
     async fn execute_query<Q: GraphQLQuery>(
         &self,
         variables: Q::Variables,
@@ -109,6 +110,7 @@ impl AniListClient {
         }
     }
 
+    // Get details for a specific anime
     pub async fn get_anime_details(
         &self,
         id: i32,
@@ -117,6 +119,7 @@ impl AniListClient {
         self.execute_query::<AnimeDetails>(variables).await
     }
 
+    // Search for anime by title
     pub async fn search_anime(
         &self,
         query: String,
@@ -131,23 +134,27 @@ impl AniListClient {
         self.execute_query::<AnimeSearch>(variables).await
     }
 
+    // Get a user's anime list
     pub async fn get_user_anime_list(
         &self,
         user_id: i32,
         status: Option<String>,
     ) -> Result<user_anime_list::ResponseData, AppError> {
-        let status_enum = status.map(|s| {
-            // Map string to MediaListStatus enum
-            match s.to_uppercase().as_str() {
-                "CURRENT" => user_anime_list::MediaListStatus::CURRENT,
-                "PLANNING" => user_anime_list::MediaListStatus::PLANNING,
-                "COMPLETED" => user_anime_list::MediaListStatus::COMPLETED,
-                "DROPPED" => user_anime_list::MediaListStatus::DROPPED,
-                "PAUSED" => user_anime_list::MediaListStatus::PAUSED,
-                "REPEATING" => user_anime_list::MediaListStatus::REPEATING,
-                _ => user_anime_list::MediaListStatus::CURRENT, // Default
+        // Convert string status to MediaListStatus enum
+        let status_enum = match status {
+            Some(s) => {
+                match s.to_uppercase().as_str() {
+                    "CURRENT" => Some(user_anime_list::MediaListStatus::CURRENT),
+                    "PLANNING" => Some(user_anime_list::MediaListStatus::PLANNING),
+                    "COMPLETED" => Some(user_anime_list::MediaListStatus::COMPLETED),
+                    "DROPPED" => Some(user_anime_list::MediaListStatus::DROPPED),
+                    "PAUSED" => Some(user_anime_list::MediaListStatus::PAUSED),
+                    "REPEATING" => Some(user_anime_list::MediaListStatus::REPEATING),
+                    _ => Some(user_anime_list::MediaListStatus::CURRENT), // Default
+                }
             }
-        });
+            None => None,
+        };
 
         let variables = user_anime_list::Variables {
             user_id: Some(user_id),
@@ -156,6 +163,7 @@ impl AniListClient {
         self.execute_query::<UserAnimeList>(variables).await
     }
 
+    // Get a user's profile
     pub async fn get_user_profile(
         &self,
         username: String,
@@ -166,6 +174,7 @@ impl AniListClient {
         self.execute_query::<UserProfile>(variables).await
     }
 
+    // Get the authenticated user's information
     pub async fn get_viewer(&self) -> Result<viewer::ResponseData, AppError> {
         if self.token.is_none() {
             return Err(AppError::AuthError(
@@ -177,6 +186,7 @@ impl AniListClient {
         self.execute_query::<Viewer>(variables).await
     }
 
+    // Update a media list entry
     pub async fn update_media_list(
         &self,
         id: Option<i32>,
@@ -191,25 +201,33 @@ impl AniListClient {
             ));
         }
 
-        let status_enum = status.map(|s| {
-            // Map string to MediaListStatus enum
-            match s.to_uppercase().as_str() {
-                "CURRENT" => update_media_list::MediaListStatus::CURRENT,
-                "PLANNING" => update_media_list::MediaListStatus::PLANNING,
-                "COMPLETED" => update_media_list::MediaListStatus::COMPLETED,
-                "DROPPED" => update_media_list::MediaListStatus::DROPPED,
-                "PAUSED" => update_media_list::MediaListStatus::PAUSED,
-                "REPEATING" => update_media_list::MediaListStatus::REPEATING,
-                _ => update_media_list::MediaListStatus::CURRENT, // Default
+        // Convert string status to MediaListStatus enum
+        let status_enum = match status {
+            Some(s) => {
+                match s.to_uppercase().as_str() {
+                    "CURRENT" => Some(update_media_list::MediaListStatus::CURRENT),
+                    "PLANNING" => Some(update_media_list::MediaListStatus::PLANNING),
+                    "COMPLETED" => Some(update_media_list::MediaListStatus::COMPLETED),
+                    "DROPPED" => Some(update_media_list::MediaListStatus::DROPPED),
+                    "PAUSED" => Some(update_media_list::MediaListStatus::PAUSED),
+                    "REPEATING" => Some(update_media_list::MediaListStatus::REPEATING),
+                    _ => Some(update_media_list::MediaListStatus::CURRENT), // Default
+                }
             }
-        });
+            None => None,
+        };
+
+        // Convert parameters to the expected types
+        let id_i64 = id.map(|i| i as i64);
+        let media_id_i64 = media_id.map(|i| i as i64);
+        let progress_i64 = progress.map(|i| i as i64);
 
         let variables = update_media_list::Variables {
-            id,
-            media_id,
+            id: id_i64,
+            media_id: media_id_i64,
             status: status_enum,
             score,
-            progress,
+            progress: progress_i64,
         };
         self.execute_query::<UpdateMediaList>(variables).await
     }
