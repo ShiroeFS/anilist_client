@@ -352,4 +352,16 @@ impl Database {
         self.conn.execute("DELETE FROM cached_anime", [])?;
         Ok(())
     }
+
+    pub fn clear_auth(&self) -> SqlResult<()> {
+        self.conn.execute("DELETE FROM user_auth", [])?;
+        Ok(())
+    }
+}
+
+impl Clone for Database {
+    fn clone(&self) -> Self {
+        // Create a new database connection
+        Self::new().expect("Failed to clone database connection")
+    }
 }

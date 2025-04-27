@@ -14,6 +14,12 @@ pub enum Message {
     AnimeLoaded(Result<AnimeDetails, String>),
     Login,
     Logout,
+    AuthenticateRequested,
+    AuthenticationStarted,
+    AuthenticationCompleted(Result<(), String>),
+    TokenRefreshed(Result<(), String>),
+    LogoutRequested,
+    LogoutCompleted,
 }
 
 pub struct AniListApp {
@@ -163,6 +169,77 @@ impl Application for AniListApp {
                 self.is_logged_in = false;
                 Command::none()
             }
+            Message::AuthenticateRequested => Command::perform(
+                // authenticate(self.auth_manager.clone(), self.db.clone()),
+                // |result| match result {
+                //     Ok(()) => Message::AuthenticationCompleted(Ok(())),
+                //     Err(e) => Message::AuthenticationCompleted(Err(e.to_string())),
+                // },
+                async { Ok(()) },
+                |_: Result<(), Box<dyn std::error::Error>>| Message::AuthenticationStarted,
+            ),
+            Message::AuthenticationStarted => {
+                // Show a loading indicator or similar UI feedback
+                Command::perform(
+                    authenticate(self.auth_manager.clone(), self.db.clone()),
+                    |result| match result {
+                        Ok(()) => Message::AuthenticationCompleted(Ok(())),
+                        Err(e) => Message::AuthenticationCompleted(Err(e.to_string())),
+                    },
+                )
+            }
+            Message::AuthenticationCompleted(result) => {
+                match result {
+                    Ok(()) => {
+                        self.is_logged_in = true;
+                        // Fetch user data and anime list after login
+                        Command::perform(
+                            fetch_user_data(self.api_client.clone()),
+                            |_| Message::Search("".to_string()), // Just a placeholder
+                        )
+                    }
+                    Err(e) => {
+                        eprintln!("Authentication error: {}", e);
+                        // Show error to user
+                        Command::none()
+                    }
+                }
+            }
+            Message::TokenRefreshed(result) => {
+                match result {
+                    Ok(()) => {
+                        // Token was successfully refreshed
+                        println!("Token refreshed successfully");
+                        Command::none()
+                    }
+                    Err(e) => {
+                        // Token refresh failed, might need to re-authenticate
+                        eprintln!("Token refresh error: {}", e);
+                        if self.is_logged_in {
+                            self.is_logged_in = false;
+                            // Trigger re-authentication
+                            Command::perform(
+                                async { Ok(()) },
+                                |_: Result<(), Box<dyn std::error::Error>>| {
+                                    Message::AuthenticateRequested
+                                },
+                            )
+                        } else {
+                            Command::none()
+                        }
+                    }
+                }
+            }
+            Message::LogoutRequested => {
+                Command::perform(logout(self.db.clone()), |_| Message::LogoutCompleted)
+            }
+            Message::LogoutCompleted => {
+                self.is_logged_in = false;
+                // Clear user-specific data
+                self.anime_list.clear();
+                self.selected_anime = None;
+                Command::none()
+            }
         }
     }
 
@@ -248,4 +325,27 @@ impl Application for AniListApp {
     fn subscription(&self) -> Subscription<Self::Message> {
         Subscription::none()
     }
+}
+
+async fn authenticate(
+    auth_manager: AuthManager,
+    mut db: Database,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let _token = auth_manager.ensure_authenticated(&mut db).await?;
+    // Update the client with the new token - this would need to be handled at app level
+    Ok(())
+}
+
+// Function to perform logout
+async fn logout(db: Database) -> Result<(), Box<dyn std::error::Error>> {
+    // Clear auth data from database
+    db.clear_auth()?;
+    Ok(())
+}
+
+// Function to fetch user data after authentication
+async fn fetch_user_data(_client: AniListClient) -> Result<(), Box<dyn std::error::Error>> {
+    // This would use the API client to fetch user data
+    // For a simple implementation, we'll just return Ok
+    Ok(())
 }

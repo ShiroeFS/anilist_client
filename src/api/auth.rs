@@ -16,6 +16,7 @@ pub struct AuthConfig {
     pub redirect_uri: String,
 }
 
+#[derive(Clone)]
 pub struct AuthManager {
     client: BasicClient,
     config: AuthConfig,
@@ -123,32 +124,130 @@ impl AuthManager {
 
     pub async fn refresh_token(
         &self,
-        _refresh_token: String,
+        refresh_token: String,
     ) -> Result<AuthToken, Box<dyn std::error::Error>> {
-        // Implement token refresh logic here
-        // This would use the refresh_token to get a new access_token
-        // For brevity, this is not fully implemented in this example
-        todo!()
+        // Create a request to refresh the token
+        let token_result = self
+            .client
+            .exchange_refresh_token(&oauth2::RefreshToken::new(refresh_token))
+            .request_async(async_http_client)
+            .await?;
+
+        // Create and return our token object
+        let auth_token = AuthToken {
+            access_token: token_result.access_token().secret().clone(),
+            token_type: format!("{:?}", token_result.token_type()),
+            expires_in: token_result.expires_in().map(|d| d.as_secs()),
+            refresh_token: token_result.refresh_token().map(|t| t.secret().clone()),
+        };
+
+        Ok(auth_token)
     }
-}
 
-// Usage example
-async fn auth_example() -> Result<(), Box<dyn std::error::Error>> {
-    // load config from environment or config file
-    let auth_config = AuthConfig {
-        client_id: "your-client-id".to_string(),
-        client_secret: "your-client-secret".to_string(),
-        redirect_uri: "http://localhost:8080/callback".to_string(),
-    };
+    pub fn is_token_expired(token: &AuthToken) -> bool {
+        if let Some(expires_in) = token.expires_in {
+            // Check if token is about to expire (within 5 minutes)
+            if expires_in <= 300 {
+                return true;
+            }
+        }
 
-    let auth_manager = AuthManager::new(auth_config);
-    let token = auth_manager.authenticate().await?;
+        false
+    }
 
-    println!("Successfully authenticated!");
-    println!("Access token: {}", token.access_token);
+    pub async fn ensure_authenticated(
+        &self,
+        db: &mut crate::data::database::Database,
+    ) -> Result<AuthToken, Box<dyn std::error::Error>> {
+        // Try to get stored auth token
+        let auth_info = db.get_auth()?;
 
-    // Store the token securely for future use
-    // You might want to use a secure storage like keyring
+        if let Some((user_id, access_token, refresh_token, _)) = auth_info {
+            // Create auth token from stored data
+            let token = AuthToken {
+                access_token,
+                token_type: "Bearer".to_string(),
+                expires_in: None, // We might not have this stored
+                refresh_token,
+            };
 
-    Ok(())
+            // If we have a refresh token and the access token might be expired
+            if let Some(refresh_token_str) = &token.refresh_token {
+                // Try to refresh the token
+                match self.refresh_token(refresh_token_str.clone()).await {
+                    Ok(new_token) => {
+                        // Save the new token
+                        db.save_auth(
+                            user_id,
+                            &new_token.access_token,
+                            new_token.refresh_token.as_deref(),
+                            new_token.expires_in.map(|secs| {
+                                let now = chrono::Utc::now();
+                                now + chrono::Duration::seconds(secs as i64)
+                            }),
+                        )?;
+                        return Ok(new_token);
+                    }
+                    Err(_) => {
+                        // If refresh fails, we'll need to authenticate from scratch
+                    }
+                }
+            } else {
+                // If we have a token but no refresh token, return what we have
+                return Ok(token);
+            }
+        }
+
+        // If we got here, we need to authenticate from scratch
+        let token = self.authenticate().await?;
+
+        // Get user ID from the API using the token
+        let user_id = match Self::get_user_id(&token.access_token).await {
+            Ok(id) => id,
+            Err(e) => return Err(format!("Failed to get user ID: {}", e).into()),
+        };
+
+        // Store the new token
+
+        db.save_auth(
+            user_id,
+            &token.access_token,
+            token.refresh_token.as_deref(),
+            token.expires_in.map(|secs| {
+                let now = chrono::Utc::now();
+                now + chrono::Duration::seconds(secs as i64)
+            }),
+        )?;
+
+        Ok(token)
+    }
+
+    // Helper function to get the user ID for the authenticated user
+    async fn get_user_id(access_token: &str) -> Result<i32, Box<dyn std::error::Error>> {
+        // This would use the API client to call the Viewer query
+        // For now, we'll implement a simplified version
+        let client = reqwest::Client::new();
+        let response = client
+            .post("https://graphql.anilist.co")
+            .header("Authorization", format!("Bearer {}", access_token))
+            .json(&serde_json::json!({
+                "query": "query { Viewer { id } }"
+            }))
+            .send()
+            .await?;
+
+        let json: serde_json::Value = response.json().await?;
+
+        // Extract the ID from the response
+        if let Some(id) = json
+            .get("data")
+            .and_then(|data| data.get("Viewer"))
+            .and_then(|viewer| viewer.get("id"))
+            .and_then(|id| id.as_i64())
+        {
+            Ok(id as i32)
+        } else {
+            Err("Failed to extract user ID from response".into())
+        }
+    }
 }

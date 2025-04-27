@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 // Main API client
+#[derive(Clone)]
 pub struct AniListClient {
     client: Client,
     endpoint: String,
