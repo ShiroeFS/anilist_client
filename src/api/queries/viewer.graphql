@@ -7,12 +7,9 @@ query Viewer {
     }
     options {
       displayAdultContent
-      airingStatusNotifications
       titleLanguage
-      scoreFormat
     }
     mediaListOptions {
-      scoreFormat
       animeList {
         customLists
         sectionOrder

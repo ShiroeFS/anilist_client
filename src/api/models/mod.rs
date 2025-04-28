@@ -1,4 +1,3 @@
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,4 +51,20 @@ pub struct MediaListEntry {
     pub progress: Option<i32>,
     pub updated_at: i64, // Unix timestamp
     pub media: Option<Media>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum MediaType {
+    ANIME,
+    MANGA,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum MediaListStatus {
+    CURRENT,
+    PLANNING,
+    COMPLETED,
+    DROPPED,
+    PAUSED,
+    REPEATING,
 }

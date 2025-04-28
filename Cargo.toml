@@ -1,16 +1,16 @@
 [package]
 name = "anilist_client"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [[bin]]
 name = "test_auth"
 path = "src/bin/test_auth.rs"
 
 [dependencies]
-reqwest = { version = "0.12", features = ["json", "gzip", "rustls-tls"] }
+reqwest = { version = "0.11", features = ["json"] }
 tokio = { version = "1", features = ["full"] }
-graphql_client = "0.14.0"
+graphql_client = "0.12.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 oauth2 = "4.4"
@@ -21,4 +21,8 @@ iced = { version = "0.9", features = ["image", "tokio"] }
 async-std = "1.12"
 rusqlite = { version = "0.29", features = ["bundled"] }
 directories = "5.0"
-chrono = "0.4"
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "1.0"
+
+[build-dependencies]
+graphql_client_codegen = "0.12.0"

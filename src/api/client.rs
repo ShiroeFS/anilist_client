@@ -1,6 +1,7 @@
 use crate::utils::error::AppError;
-use graphql_client::*;
+use graphql_client::{GraphQLQuery, Response};
 use reqwest::Client;
+use serde::{Deserialize, Serialize};
 
 // -----------------------------------------------------------------------------
 // GraphQL query structs (one per .graphql file)
@@ -10,7 +11,7 @@ use reqwest::Client;
 #[graphql(
     schema_path = "src/api/queries/schema.graphql",
     query_path = "src/api/queries/anime_details.graphql",
-    response_derives = "Debug, Clone, serde::Serialize, serde::Deserialize"
+    response_derives = "Debug, Clone"
 )]
 pub struct AnimeDetails;
 
@@ -18,7 +19,7 @@ pub struct AnimeDetails;
 #[graphql(
     schema_path = "src/api/queries/schema.graphql",
     query_path = "src/api/queries/anime_search.graphql",
-    response_derives = "Debug, Clone, serde::Serialize, serde::Deserialize"
+    response_derives = "Debug, Clone"
 )]
 pub struct AnimeSearch;
 
@@ -26,7 +27,7 @@ pub struct AnimeSearch;
 #[graphql(
     schema_path = "src/api/queries/schema.graphql",
     query_path = "src/api/queries/user_anime_list.graphql",
-    response_derives = "Debug, Clone, serde::Serialize, serde::Deserialize"
+    response_derives = "Debug, Clone"
 )]
 pub struct UserAnimeList;
 
@@ -34,7 +35,7 @@ pub struct UserAnimeList;
 #[graphql(
     schema_path = "src/api/queries/schema.graphql",
     query_path = "src/api/queries/user_profile.graphql",
-    response_derives = "Debug, Clone, serde::Serialize, serde::Deserialize"
+    response_derives = "Debug, Clone"
 )]
 pub struct UserProfile;
 
@@ -42,7 +43,7 @@ pub struct UserProfile;
 #[graphql(
     schema_path = "src/api/queries/schema.graphql",
     query_path = "src/api/queries/viewer.graphql",
-    response_derives = "Debug, Clone, serde::Serialize, serde::Deserialize"
+    response_derives = "Debug, Clone"
 )]
 pub struct Viewer;
 
@@ -50,28 +51,18 @@ pub struct Viewer;
 #[graphql(
     schema_path = "src/api/queries/schema.graphql",
     query_path = "src/api/queries/update_media_list.graphql",
-    response_derives = "Debug, Clone, serde::Serialize, serde::Deserialize"
+    response_derives = "Debug, Clone"
 )]
 pub struct UpdateMediaList;
 
-// -----------------------------------------------------------------------------
-// AniListClient – high‑level wrapper around the AniList GraphQL endpoint
-// -----------------------------------------------------------------------------
-
+#[derive(Clone)]
 pub struct AniListClient {
     client: Client,
     endpoint: String,
     token: Option<String>,
 }
 
-impl Default for AniListClient {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl AniListClient {
-    /// Un‑authenticated client.
     pub fn new() -> Self {
         Self {
             client: Client::new(),
@@ -80,66 +71,72 @@ impl AniListClient {
         }
     }
 
-    /// Client that sends `Bearer <token>` on every request.
-    pub fn with_token(token: impl Into<String>) -> Self {
-        Self {
-            token: Some(token.into()),
-            ..Self::new()
-        }
+    pub fn with_token(token: String) -> Self {
+        let mut client = Self::new();
+        client.token = Some(token);
+        client
     }
 
-    // ---------------------------------------------------------------------
-    // internal generic executor – the only place we hit the network
-    // ---------------------------------------------------------------------
     async fn execute_query<Q>(&self, variables: Q::Variables) -> Result<Q::ResponseData, AppError>
     where
         Q: GraphQLQuery,
     {
-        let body = Q::build_query(variables);
-        let mut req = self.client.post(&self.endpoint).json(&body);
+        let request_body = Q::build_query(variables);
+        let mut request_builder = self.client.post(&self.endpoint).json(&request_body);
 
-        if let Some(t) = &self.token {
-            req = req.header("Authorization", format!("Bearer {t}"));
+        // Add auth token if available
+        if let Some(token) = &self.token {
+            request_builder = request_builder.header("Authorization", format!("Bearer {}", token));
         }
 
-        let resp = req.send().await?;
-        let resp_body: graphql_client::Response<Q::ResponseData> = resp.json().await?;
+        let response = request_builder.send().await?;
 
-        match resp_body.data {
-            Some(d) => Ok(d),
-            None => {
-                let msg = resp_body
-                    .errors
-                    .and_then(|mut e| e.pop())
-                    .map(|e| e.message)
-                    .unwrap_or_else(|| "AniList returned no data".to_string());
-                Err(AppError::ApiError(msg))
+        if !response.status().is_success() {
+            return Err(AppError::ApiError(format!(
+                "API request failed with status: {}",
+                response.status()
+            )));
+        }
+
+        let response_body: Response<Q::ResponseData> = response.json().await?;
+
+        if let Some(errors) = response_body.errors {
+            if !errors.is_empty() {
+                let error_msg = errors
+                    .iter()
+                    .map(|e| e.message.clone())
+                    .collect::<Vec<String>>()
+                    .join(", ");
+                return Err(AppError::ApiError(error_msg));
             }
         }
-    }
 
-    // ---------------------------------------------------------------------
-    // public high‑level helpers – thin, type‑safe wrappers
-    // ---------------------------------------------------------------------
+        match response_body.data {
+            Some(data) => Ok(data),
+            None => Err(AppError::ApiError("No data returned".into())),
+        }
+    }
 
     pub async fn get_anime_details(
         &self,
         id: i32,
     ) -> Result<anime_details::ResponseData, AppError> {
-        let variables = anime_details::Variables { id: Some(id) };
+        let variables = anime_details::Variables {
+            id: Some(id.into()),
+        };
         self.execute_query::<AnimeDetails>(variables).await
     }
 
     pub async fn search_anime(
         &self,
-        query: impl Into<String>,
+        search: String,
         page: Option<i32>,
         per_page: Option<i32>,
     ) -> Result<anime_search::ResponseData, AppError> {
         let variables = anime_search::Variables {
-            search: Some(query.into()),
-            page,
-            per_page,
+            search: Some(search),
+            page: page.map(|p| p.into()),
+            per_page: per_page.map(|pp| pp.into()),
         };
         self.execute_query::<AnimeSearch>(variables).await
     }
@@ -147,23 +144,10 @@ impl AniListClient {
     pub async fn get_user_anime_list(
         &self,
         user_id: i32,
-        status: Option<String>,
+        status: Option<user_anime_list::MediaListStatus>,
     ) -> Result<user_anime_list::ResponseData, AppError> {
-        let status = status.map(|s| {
-            use user_anime_list::MediaListStatus::*;
-            match s.to_uppercase().as_str() {
-                "CURRENT" => CURRENT,
-                "PLANNING" => PLANNING,
-                "COMPLETED" => COMPLETED,
-                "DROPPED" => DROPPED,
-                "PAUSED" => PAUSED,
-                "REPEATING" => REPEATING,
-                _ => CURRENT,
-            }
-        });
-
         let variables = user_anime_list::Variables {
-            user_id: Some(user_id),
+            user_id: Some(user_id.into()),
             status,
         };
         self.execute_query::<UserAnimeList>(variables).await
@@ -171,58 +155,32 @@ impl AniListClient {
 
     pub async fn get_user_profile(
         &self,
-        username: impl Into<String>,
+        name: String,
     ) -> Result<user_profile::ResponseData, AppError> {
-        let variables = user_profile::Variables {
-            name: Some(username.into()),
-        };
+        let variables = user_profile::Variables { name: Some(name) };
         self.execute_query::<UserProfile>(variables).await
-    }
-
-    pub async fn get_viewer(&self) -> Result<viewer::ResponseData, AppError> {
-        if self.token.is_none() {
-            return Err(AppError::AuthError(
-                "Authentication required to get viewer information".into(),
-            ));
-        }
-        self.execute_query::<Viewer>(viewer::Variables {}).await
     }
 
     pub async fn update_media_list(
         &self,
         id: Option<i32>,
         media_id: Option<i32>,
-        status: Option<String>,
+        status: Option<update_media_list::MediaListStatus>,
         score: Option<f64>,
         progress: Option<i32>,
     ) -> Result<update_media_list::ResponseData, AppError> {
-        if self.token.is_none() {
-            return Err(AppError::AuthError(
-                "Authentication required to update media list".into(),
-            ));
-        }
-
-        let status = status.map(|s| {
-            use update_media_list::MediaListStatus::*;
-            match s.to_uppercase().as_str() {
-                "CURRENT" => CURRENT,
-                "PLANNING" => PLANNING,
-                "COMPLETED" => COMPLETED,
-                "DROPPED" => DROPPED,
-                "PAUSED" => PAUSED,
-                "REPEATING" => REPEATING,
-                _ => CURRENT,
-            }
-        });
-
         let variables = update_media_list::Variables {
-            id: id.map(|x| x as i64),
-            media_id: media_id.map(|x| x as i64),
+            id: id.map(|i| i.into()),
+            media_id: media_id.map(|i| i.into()),
             status,
             score,
-            progress: progress.map(|x| x as i64),
+            progress: progress.map(|i| i.into()),
         };
-
         self.execute_query::<UpdateMediaList>(variables).await
+    }
+
+    pub async fn get_viewer(&self) -> Result<viewer::ResponseData, AppError> {
+        let variables = viewer::Variables {};
+        self.execute_query::<Viewer>(variables).await
     }
 }

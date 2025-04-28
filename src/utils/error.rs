@@ -4,10 +4,10 @@ use std::fmt;
 pub enum AppError {
     ApiError(String),
     DatabaseError(String),
-    AuthError(String),
-    ConfigError(String),
+    _AuthError(String),
+    _ConfigError(String),
     NetworkError(String),
-    UiError(String),
+    _UiError(String),
 }
 
 impl fmt::Display for AppError {
@@ -15,10 +15,10 @@ impl fmt::Display for AppError {
         match self {
             AppError::ApiError(msg) => write!(f, "API Error: {}", msg),
             AppError::DatabaseError(msg) => write!(f, "Database Error: {}", msg),
-            AppError::AuthError(msg) => write!(f, "Authentication Error: {}", msg),
-            AppError::ConfigError(msg) => write!(f, "Configuration Error: {}", msg),
+            AppError::_AuthError(msg) => write!(f, "Authentication Error: {}", msg),
+            AppError::_ConfigError(msg) => write!(f, "Configuration Error: {}", msg),
             AppError::NetworkError(msg) => write!(f, "Network Error: {}", msg),
-            AppError::UiError(msg) => write!(f, "UI Error: {}", msg),
+            AppError::_UiError(msg) => write!(f, "UI Error: {}", msg),
         }
     }
 }
