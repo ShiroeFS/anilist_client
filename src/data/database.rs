@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use directories::ProjectDirs;
-use rusqlite::{Connection, Result as SqlResult, params};
+use rusqlite::{params, Connection, Result as SqlResult};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -32,6 +32,7 @@ pub struct CachedListEntry {
     pub updated_at: DateTime<Utc>,
 }
 
+#[derive(Debug)]
 pub struct Database {
     conn: Connection,
 }

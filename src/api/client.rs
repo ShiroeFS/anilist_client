@@ -1,7 +1,9 @@
+use crate::api::auth::{AuthManager, AuthToken};
 use crate::utils::error::AppError;
 use graphql_client::{GraphQLQuery, Response};
-use reqwest::Client;
+use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
+use std::sync::{Arc, Mutex};
 
 // -----------------------------------------------------------------------------
 // GraphQL query structs (one per .graphql file)
@@ -55,11 +57,12 @@ pub struct Viewer;
 )]
 pub struct UpdateMediaList;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct AniListClient {
     client: Client,
     endpoint: String,
-    token: Option<String>,
+    auth_manager: Option<Arc<AuthManager>>,
+    auth_token: Arc<Mutex<Option<AuthToken>>>,
 }
 
 impl AniListClient {
@@ -67,14 +70,80 @@ impl AniListClient {
         Self {
             client: Client::new(),
             endpoint: "https://graphql.anilist.co".to_string(),
-            token: None,
+            auth_manager: None,
+            auth_token: Arc::new(Mutex::new(None)),
         }
     }
 
     pub fn with_token(token: String) -> Self {
-        let mut client = Self::new();
-        client.token = Some(token);
+        let client = Self::new();
+
+        if let Ok(mut token_guard) = client.auth_token.lock() {
+            *token_guard = Some(AuthToken {
+                access_token: token,
+                token_type: "Bearer".to_string(),
+                expires_in: None,
+                refresh_token: None,
+                created_at: chrono::Utc::now(),
+            });
+        }
+
         client
+    }
+
+    pub fn with_auth_manager(auth_manager: AuthManager) -> Self {
+        let mut client = Self::new();
+        client.auth_manager = Some(Arc::new(auth_manager));
+        client
+    }
+
+    pub async fn get_current_token(&self) -> Result<Option<String>, AppError> {
+        // First check if we have a token in memory
+        let token_option = {
+            if let Ok(token_guard) = self.auth_token.lock() {
+                token_guard.clone()
+            } else {
+                return Err(AppError::ApiError("Failed to access auth token".into()));
+            }
+        };
+
+        // If we have a token that's not expired, use it
+        if let Some(token) = &token_option {
+            if !token.is_expired() {
+                return Ok(Some(token.access_token.clone()));
+            }
+        }
+
+        // If we have an auth manager, try to refresh or reauthenticate
+        if let Some(auth_manager) = &self.auth_manager {
+            match auth_manager.ensure_authenticated().await {
+                Ok(new_token) => {
+                    // Update our in-memory token
+                    if let Ok(mut token_guard) = self.auth_token.lock() {
+                        *token_guard = Some(new_token.clone());
+                    }
+
+                    Ok(Some(new_token.access_token))
+                }
+                Err(e) => {
+                    eprintln!("Authentication error: {}", e);
+                    // Clear any existing token
+                    if let Ok(mut token_guard) = self.auth_token.lock() {
+                        *token_guard = None;
+                    }
+
+                    // For unauthenticated requests, we can still return Ok(None)
+                    Ok(None)
+                }
+            }
+        } else {
+            // If we don't have an auth manager, just return what we have (if anything)
+            if let Some(token) = token_option {
+                Ok(Some(token.access_token))
+            } else {
+                Ok(None)
+            }
+        }
     }
 
     async fn execute_query<Q>(&self, variables: Q::Variables) -> Result<Q::ResponseData, AppError>
@@ -85,21 +154,31 @@ impl AniListClient {
         let mut request_builder = self.client.post(&self.endpoint).json(&request_body);
 
         // Add auth token if available
-        if let Some(token) = &self.token {
+        if let Ok(Some(token)) = self.get_current_token().await {
             request_builder = request_builder.header("Authorization", format!("Bearer {}", token));
         }
 
         let response = request_builder.send().await?;
+        let status = response.status();
 
-        if !response.status().is_success() {
+        // Handle rate limiting
+        if status == StatusCode::TOO_MANY_REQUESTS {
+            return Err(AppError::ApiError(
+                "Rate limit exceeded. Please try again later.".into(),
+            ));
+        }
+
+        // Handle other error statuses
+        if !status.is_success() {
             return Err(AppError::ApiError(format!(
                 "API request failed with status: {}",
-                response.status()
+                status
             )));
         }
 
         let response_body: Response<Q::ResponseData> = response.json().await?;
 
+        // Check for GraphQL errors
         if let Some(errors) = response_body.errors {
             if !errors.is_empty() {
                 let error_msg = errors
@@ -169,6 +248,13 @@ impl AniListClient {
         score: Option<f64>,
         progress: Option<i32>,
     ) -> Result<update_media_list::ResponseData, AppError> {
+        // This mutation requires authentication
+        if let Ok(None) = self.get_current_token().await {
+            return Err(AppError::ApiError(
+                "Authentication required for this operation".into(),
+            ));
+        }
+
         let variables = update_media_list::Variables {
             id: id.map(|i| i.into()),
             media_id: media_id.map(|i| i.into()),
@@ -180,7 +266,35 @@ impl AniListClient {
     }
 
     pub async fn get_viewer(&self) -> Result<viewer::ResponseData, AppError> {
+        // This query requires authentication
+        if let Ok(None) = self.get_current_token().await {
+            return Err(AppError::ApiError(
+                "Authentication required for this operation".into(),
+            ));
+        }
+
         let variables = viewer::Variables {};
         self.execute_query::<Viewer>(variables).await
+    }
+
+    pub async fn is_authenticated(&self) -> bool {
+        match self.get_current_token().await {
+            Ok(Some(_)) => true,
+            _ => false,
+        }
+    }
+
+    pub async fn logout(&self) -> Result<(), AppError> {
+        // Clear the in-memory token
+        if let Ok(mut token_guard) = self.auth_token.lock() {
+            *token_guard = None;
+        }
+
+        // If we have an auth manager, use it to clear the database
+        if let Some(auth_manager) = &self.auth_manager {
+            auth_manager.logout().await?;
+        }
+
+        Ok(())
     }
 }
