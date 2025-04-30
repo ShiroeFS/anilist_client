@@ -111,11 +111,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     } else {
         // Launch the GUI application
-        let ui_app = AniListApp::new(
-            app.get_api_client(),
-            app.get_database(),
-            app.get_config().auth_config.clone(),
-        );
+        println!("Starting GUI application...");
+
+        let ui_app = app.create_ui_app();
 
         if let Err(e) = AniListApp::launch() {
             eprintln!("Application error: {}", e);

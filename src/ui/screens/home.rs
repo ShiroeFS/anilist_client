@@ -1,4 +1,4 @@
-use iced::widget::{button, column, container, image, row, scrollable, text};
+use iced::widget::{column, container, row, scrollable, text};
 use iced::{Command, Element, Length};
 
 use crate::api::client::AniListClient;
@@ -38,8 +38,12 @@ impl HomeScreen {
     }
 
     pub fn init(&mut self) -> Command<Message> {
-        Command::perform(async { () }, |_| Message::LoadUserData)
+        Command::perform(
+            async { () },
+            |_| Message::LoadUserData
+        )
     }
+
     pub fn update(&mut self, message: Message) -> Command<Message> {
         match message {
             Message::LoadUserData => {
@@ -65,45 +69,47 @@ impl HomeScreen {
                                         let mut entries = Vec::new();
 
                                         if let Some(collection) = list_data.media_list_collection {
-                                            for list in collection.lists.unwrap_or_default() {
-                                                if let Some(list_entries) = list.entries {
-                                                    for entry in list_entries {
-                                                        if let Some(entry) = entry {
-                                                            // Convert to our internal model
-                                                            let media_list_entry = MediaListEntry {
-                                                                id: entry.id as i32,
-                                                                media_id: entry.media_id as i32,
-                                                                status: entry.status.to_string(),
-                                                                score: entry.score,
-                                                                progress: entry.progress.map(|p| p as i32),
-                                                                updated_at: entry.updated_at,
-                                                                media: entry.media.map(|m| {
-                                                                    crate::api::models::Media {
-                                                                        id: m.id as i32,
-                                                                        title: crate::api::models::MediaTitle {
-                                                                            romaji: m.title.as_ref().and_then(|t| t.romaji.clone()),
-                                                                            english: m.title.as_ref().and_then(|t| t.english.clone()),
-                                                                            native: m.title.as_ref().and_then(|t| t.native.clone()),
-                                                                        },
-                                                                        description: m.description,
-                                                                        episodes: m.episodes.map(|e| e as i32),
-                                                                        duration: m.duration,
-                                                                        genres: m.genres.map(|g| g.into_iter().filter_map(|s| s).collect()),
-                                                                        average_score: m.average_score,
-                                                                        cover_image: m.cover_image.map(|img| {
-                                                                            crate::api::models::MediaCoverImage {
-                                                                                large: img.large,
-                                                                                medium: img.medium,
-                                                                            }
-                                                                        }),
-                                                                        banner_image: m.banner_image,
-                                                                        status: m.status,
-                                                                        format: m.format,
-                                                                    }
-                                                                }),
-                                                            };
-
-                                                            entries.push(media_list_entry);
+                                            for list_opt in collection.lists.unwrap_or_default() {
+                                                if let Some(list) = list_opt {
+                                                    if let Some(list_entries) = list.entries {
+                                                        for entry in list_entries {
+                                                            if let Some(entry) = entry {
+                                                                // Convert to our internal model
+                                                                let media_list_entry = MediaListEntry {
+                                                                    id: entry.id as i32,
+                                                                    media_id: entry.media_id as i32,
+                                                                    status: entry.status.map_or("UNKNOWN".to_string(), |s| format!("{:?}", s)),
+                                                                    score: entry.score,
+                                                                    progress: entry.progress.map(|p| p as i32),
+                                                                    updated_at: entry.updated_at.unwrap_or(0),
+                                                                    media: entry.media.map(|m| {
+                                                                        crate::api::models::Media {
+                                                                            id: m.id as i32,
+                                                                            title: crate::api::models::MediaTitle {
+                                                                                romaji: m.title.as_ref().and_then(|t| t.romaji.clone()),
+                                                                                english: m.title.as_ref().and_then(|t| t.english.clone()),
+                                                                                native: m.title.as_ref().and_then(|t| t.native.clone()),
+                                                                            },
+                                                                            description: None,
+                                                                            episodes: m.episodes.map(|e| e as i32),
+                                                                            duration: None,
+                                                                            genres: None,
+                                                                            average_score: None,
+                                                                            cover_image: m.cover_image.map(|img| {
+                                                                                crate::api::models::MediaCoverImage {
+                                                                                    large: None,
+                                                                                    medium: img.medium,
+                                                                                }
+                                                                            }),
+                                                                            banner_image: None,
+                                                                            status: m.status.map(|s| format!("{:?}", s)),
+                                                                            format: m.format.map(|f| format!("{:?}", f)),
+                                                                        }
+                                                                    }),
+                                                                };
+    
+                                                                entries.push(media_list_entry);
+                                                }
                                                         }
                                                     }
                                                 }
@@ -219,6 +225,7 @@ impl HomeScreen {
             // Display the user's currently watching list
             column![
                 text("Currently Watching").size(30),
+                // Create a new MediaList component and hold a reference to it
                 MediaList::new(self.currently_watching.clone())
                     .on_select(|id| MediaListMessage::Selected(id))
                     .view()
@@ -241,6 +248,7 @@ impl HomeScreen {
             content
         };
 
+        // Return the content in a scrollable container
         scrollable(
             container(content_with_error)
                 .width(Length::Fill)

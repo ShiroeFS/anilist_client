@@ -13,21 +13,11 @@ use tokio::sync::oneshot;
 use url::Url;
 
 use crate::data::database::Database;
+use crate::utils::config;
 use crate::utils::error::AppError;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct AuthConfig {
-    pub client_id: String,
-    pub client_secret: String,
-    pub redirect_uri: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct AuthManager {
-    client: BasicClient,
-    config: AuthConfig,
-    db: Arc<Mutex<Database>>,
-}
+// Re-use the AuthConfig from utils to avoid duplication
+pub use crate::utils::config::AuthConfig;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AuthToken {
@@ -36,6 +26,13 @@ pub struct AuthToken {
     pub expires_in: Option<u64>,
     pub refresh_token: Option<String>,
     pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AuthManager {
+    client: BasicClient,
+    config: AuthConfig,
+    db: Arc<Mutex<Database>>,
 }
 
 impl AuthToken {
@@ -122,7 +119,7 @@ impl AuthManager {
             .await
             .map_err(|e| AppError::ApiError(format!("Token exchange failed: {}", e)))?;
 
-        //Create our token object
+        // Create our token object
         let auth_token = AuthToken {
             access_token: token_result.access_token().secret().clone(),
             token_type: format!("{:?}", token_result.token_type()),
@@ -142,7 +139,7 @@ impl AuthManager {
             .expires_in
             .map(|secs| auth_token.created_at + Duration::seconds(secs as i64));
 
-        if let Ok(mut db) = self.db.lock() {
+        if let Ok(db) = self.db.lock() {
             db.save_auth(
                 user_id,
                 &auth_token.access_token,
@@ -166,29 +163,18 @@ impl AuthManager {
         let listener = TcpListener::bind("127.0.0.1:8080")
             .map_err(|e| AppError::ApiError(format!("Failed to start auth server: {}", e)))?;
 
-        listener
-            .set_nonblocking(true)
-            .map_err(|e| AppError::ApiError(format!("Failed to set non-blocking mode: {}", e)))?;
-
-        // Convert to async listener using async-std
-        let listener = async_std::net::TcpListener::from_std(listener)
-            .map_err(|e| AppError::ApiError(format!("Failed to create async listener: {}", e)))?;
-
+        // Accept one connection - synchronous since we're awaiting the response
         println!("Waiting for authentication callback at http://localhost:8080/callback...");
-
-        // Accept one connection
-        let (stream, _) = listener
+        let (mut stream, _) = listener
             .accept()
-            .await
             .map_err(|e| AppError::ApiError(format!("Failed to accept connection: {}", e)))?;
 
         let mut reader = BufReader::new(&stream);
         let mut request_line = String::new();
 
-        // Async read from the stream
+        // Read from the stream
         reader
             .read_line(&mut request_line)
-            .await
             .map_err(|e| AppError::ApiError(format!("Failed to read request: {}", e)))?;
 
         // Extract the authorization code from the request URL
@@ -225,7 +211,6 @@ impl AuthManager {
 
         stream
             .write_all(response.as_bytes())
-            .await
             .map_err(|e| AppError::ApiError(format!("Failed to send response: {}", e)))?;
 
         // Send the code through the channel
@@ -261,12 +246,9 @@ impl AuthManager {
         // Get user ID from the stored data
         let user_id = {
             if let Ok(db) = self.db.lock() {
-                if let Ok(Some((id, _, _, _))) = db.get_auth() {
-                    id
-                } else {
-                    // If we can't get the user ID, try to get it from the API
-                    self.get_user_id(&auth_token.access_token).await?
-                }
+                let id = db.get_user_id()?;
+                drop(db); // Explicitly drop before await
+                id
             } else {
                 return Err(AppError::ApiError("Failed to access database".into()));
             }
@@ -277,7 +259,7 @@ impl AuthManager {
             .expires_in
             .map(|secs| auth_token.created_at + Duration::seconds(secs as i64));
 
-        if let Ok(mut db) = self.db.lock() {
+        if let Ok(db) = self.db.lock() {
             db.save_auth(
                 user_id,
                 &auth_token.access_token,
@@ -305,7 +287,7 @@ impl AuthManager {
             }
         };
 
-        if let Some((user_id, access_token, refresh_token, expires_at)) = auth_info {
+        if let Some((_, access_token, refresh_token, expires_at)) = auth_info {
             // Check if token has expired
             let is_expired = match expires_at {
                 Some(expiry) => Utc::now() + Duration::minutes(5) > expiry,
@@ -342,7 +324,7 @@ impl AuthManager {
 
     pub async fn logout(&self) -> Result<(), AppError> {
         // Clear auth data from database
-        if let Ok(mut db) = self.db.lock() {
+        if let Ok(db) = self.db.lock() {
             db.clear_auth().map_err(|e| {
                 AppError::DatabaseError(format!("Failed to clear auth data: {}", e))
             })?;

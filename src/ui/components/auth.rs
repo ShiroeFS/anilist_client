@@ -20,6 +20,7 @@ pub enum Message {
     LogoutCompleted(Result<(), String>),
 }
 
+#[derive(Clone)]
 pub struct AuthComponent {
     state: State,
     auth_manager: AuthManager,
@@ -59,7 +60,7 @@ impl AuthComponent {
 
                                 match response {
                                     Ok(res) => {
-                                        if let Ok(json) = res / json::<serde_json::Value>().await {
+                                        if let Ok(json) = res.json::<serde_json::Value>().await {
                                             if let Some(name) = json
                                                 .get("data")
                                                 .and_then(|data| data.get("Viewer"))

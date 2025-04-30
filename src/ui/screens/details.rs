@@ -1,8 +1,7 @@
 use iced::widget::{button, column, container, row, scrollable, slider, text};
 use iced::{Alignment, Command, Element, Length};
 
-use crate::api::client::{self, update_media_list, AniListClient};
-use crate::utils::error::AppError;
+use crate::api::client::{AniListClient, update_media_list};
 
 // Anime details
 #[derive(Debug, Clone)]
@@ -93,7 +92,10 @@ impl DetailsScreen {
         self.error = None;
         self.anime = None;
 
-        Command::perform(async { anime_id }, Message::LoadAnimeDetails)
+        Command::perform(
+            async move { anime_id },
+            Message::LoadAnimeDetails
+        )
     }
 
     pub fn update(&mut self, message: Message) -> Command<Message> {
@@ -109,34 +111,29 @@ impl DetailsScreen {
                                 Ok(data) => {
                                     if let Some(media) = data.media {
                                         // Convert to our model
-                                        let title = media
-                                            .title
-                                            .as_ref()
+                                        let title = media.title.as_ref()
                                             .and_then(|t| t.romaji.as_ref())
                                             .unwrap_or(&"Unknown Title".to_string())
                                             .clone();
 
-                                        let english_title =
-                                            media.title.as_ref().and_then(|t| t.english.clone());
+                                        let english_title = media.title.as_ref()
+                                            .and_then(|t| t.english.clone());
 
-                                        let native_title =
-                                            media.title.as_ref().and_then(|t| t.native.clone());
+                                        let native_title = media.title.as_ref()
+                                            .and_then(|t| t.native.clone());
 
-                                        let description = media
-                                            .description
+                                        let description = media.description
                                             .unwrap_or_default()
                                             .replace("<br>", "\n")
                                             .replace("<i>", "")
                                             .replace("</i>", "");
 
-                                        let cover_image = media
-                                            .cover_image
+                                        let cover_image = media.cover_image
                                             .as_ref()
                                             .and_then(|img| img.large.clone())
                                             .unwrap_or_default();
 
-                                        let genres = media
-                                            .genres
+                                        let genres = media.genres
                                             .unwrap_or_default()
                                             .into_iter()
                                             .filter_map(|g| g)
@@ -144,15 +141,11 @@ impl DetailsScreen {
 
                                         // Extract studio names
                                         let studios = if let Some(studio_conn) = media.studios {
-                                            studio_conn
-                                                .edges
+                                            studio_conn.edges
                                                 .unwrap_or_default()
                                                 .into_iter()
                                                 .filter_map(|edge| {
-                                                    edge?
-                                                        .node
-                                                        .as_ref()
-                                                        .map(|node| node.name.clone())
+                                                    edge?.node.as_ref().map(|node| node.name.clone())
                                                 })
                                                 .collect()
                                         } else {
@@ -160,10 +153,8 @@ impl DetailsScreen {
                                         };
 
                                         // Extract character previews
-                                        let character_previews =
-                                            if let Some(char_conn) = media.characters {
-                                                char_conn
-                                                    .edges
+                                        let character_previews = if let Some(char_conn) = media.characters {
+                                                char_conn.edges
                                                     .unwrap_or_default()
                                                     .into_iter()
                                                     .filter_map(|edge| {
@@ -172,23 +163,33 @@ impl DetailsScreen {
 
                                                         Some(CharacterPreview {
                                                             id: node.id as i32,
-                                                            name: node
-                                                                .name
-                                                                .as_ref()
-                                                                .map(|n| n.full.clone())
+                                                            name: node.name.as_ref()
+                                                                .and_then(|n| n.full.clone())
                                                                 .unwrap_or_default(),
-                                                            image_url: node
-                                                                .image
-                                                                .as_ref()
+                                                            image_url: node.image.as_ref()
                                                                 .and_then(|img| img.medium.clone())
                                                                 .unwrap_or_default(),
-                                                            role: role.clone(),
+                                                            role: format!("{:?}", role), // Convert enum to string
                                                         })
                                                     })
                                                     .collect()
                                             } else {
                                                 Vec::new()
                                             };
+
+                                            // Convert status and format enums to strings
+                                            let status_str = media.status.map_or_else(
+                                                || "Unknown".to_string(),
+                                                |s| format!("{:?}", s)
+                                            );
+
+                                            let format_str = media.format.map_or_else(
+                                                || "Unknown".to_string(),
+                                                |f| format!("{:?}", f)
+                                            );
+
+                                            // Convert season enum to string
+                                            let season_str = media.season.map(|s| format!("{:?}", s));
 
                                         let details = AnimeDetails {
                                             id: media.id as i32,
@@ -200,9 +201,9 @@ impl DetailsScreen {
                                             duration: media.duration.map(|d| d as i32),
                                             genres,
                                             score: media.average_score.unwrap_or(0) as f32 / 10.0,
-                                            status: media.status.unwrap_or_default(),
-                                            format: media.format.unwrap_or_default(),
-                                            season: media.season,
+                                            status: status_str,
+                                            format: format_str,
+                                            season: season_str,
                                             year: media.season_year.map(|y| y as i32),
                                             cover_image,
                                             banner_image: media.banner_image,
@@ -214,12 +215,13 @@ impl DetailsScreen {
                                     } else {
                                         Err("Anime not found".to_string())
                                     }
-                                }
+                                },
                                 Err(e) => Err(e.to_string()),
                             }
                         },
-                        Message::AnimeDetailsLoaded,
+                        Message::AnimeDetailsLoaded
                     ),
+
                     // Check authentication and load user progress if authenticated
                     Command::perform(
                         async move {
@@ -234,35 +236,28 @@ impl DetailsScreen {
                                             let user_id = viewer.id as i32;
 
                                             // Get user's anime list to find this specific entry
-                                            match client_clone
-                                                .get_user_anime_list(user_id, None)
-                                                .await
-                                            {
+                                            match client_clone.get_user_anime_list(user_id, None).await {
                                                 Ok(list_data) => {
-                                                    if let Some(collection) =
-                                                        list_data.media_list_collection
-                                                    {
-                                                        for list in
-                                                            collection.lists.unwrap_or_default()
-                                                        {
-                                                            if let Some(entries) = list.entries {
-                                                                for entry in entries {
-                                                                    if let Some(entry) = entry {
-                                                                        if entry.media_id as i32
-                                                                            == id
-                                                                        {
-                                                                            // Found the entry
-                                                                            let progress = UserProgress {
-                                                                                list_entry_id: Some(entry.id as i32),
-                                                                                status: entry.status,
-                                                                                score: entry.score.unwrap_or(0) as f32,
-                                                                                progress: entry.progress.unwrap_or(0) as i32,
-                                                                                max_progress: entry.media.as_ref()
-                                                                                    .and_then(|m| m.episodes)
-                                                                                    .map(|e| e as i32),
-                                                                            };
-
-                                                                            return Ok(progress);
+                                                    if let Some(collection) = list_data.media_list_collection {
+                                                        for list_opt in collection.lists.unwrap_or_default() {
+                                                            if let Some(list) = list_opt {
+                                                                if let Some(entries) = list.entries {
+                                                                    for entry in entries {
+                                                                        if let Some(entry) = entry {
+                                                                            if entry.media_id as i32 == id {
+                                                                                // Found the entry
+                                                                                let progress = UserProgress {
+                                                                                    list_entry_id: Some(entry.id as i32),
+                                                                                    status: entry.status.map_or("PLANNING".to_string(), |s| format!("{:?}", s)),
+                                                                                    score: entry.score.unwrap_or(0.0) as f32,
+                                                                                    progress: entry.progress.unwrap_or(0) as i32,
+                                                                                    max_progress: entry.media.as_ref()
+                                                                                        .and_then(|m| m.episodes)
+                                                                                        .map(|e| e as i32),
+                                                                                };
+    
+                                                                                return Ok(progress);
+                                                                            }
                                                                         }
                                                                     }
                                                                 }
@@ -278,29 +273,22 @@ impl DetailsScreen {
                                                             max_progress: None,
                                                         });
                                                     }
-                                                }
-                                                Err(e) => {
-                                                    return Err(format!(
-                                                        "Failed to load anime list: {}",
-                                                        e
-                                                    ))
-                                                }
+                                                },
+                                                Err(e) => return Err(format!("Failed to load anime list: {}", e)),
                                             }
                                         }
-                                    }
-                                    Err(e) => {
-                                        return Err(format!("Failed to get user info: {}", e))
-                                    }
+                                    },
+                                    Err(e) => return Err(format!("Failed to get user info: {}", e)),
                                 }
                             }
 
                             // Not authenticated or user info not found
                             Err("Not authenticated".to_string())
                         },
-                        Message::UserProgressLoaded,
+                        Message::UserProgressLoaded
                     ),
                 ])
-            }
+            },
             Message::AnimeDetailsLoaded(result) => {
                 self.is_loading = false;
 
@@ -308,14 +296,14 @@ impl DetailsScreen {
                     Ok(details) => {
                         self.anime = Some(details);
                         self.error = None;
-                    }
+                    },
                     Err(e) => {
                         self.error = Some(format!("Failed to load anime details: {}", e));
-                    }
+                    },
                 }
 
                 Command::none()
-            }
+            },
             Message::UserProgressLoaded(result) => {
                 match result {
                     Ok(progress) => {
@@ -325,49 +313,39 @@ impl DetailsScreen {
                         self.temp_status = Some(progress.status.clone());
                         self.temp_score = Some(progress.score);
                         self.temp_progress = Some(progress.progress);
-                    }
+                    },
                     Err(e) => {
                         if e == "Not authenticated" {
                             self.is_authenticated = false;
                         } else {
                             self.error = Some(format!("Failed to load user progress: {}", e));
                         }
-                    }
+                    },
                 }
 
                 Command::none()
-            }
+            },
             Message::StatusChanged(status) => {
                 self.temp_status = Some(status);
                 Command::none()
-            }
+            },
             Message::ScoreChanged(score) => {
                 self.temp_score = Some(score);
                 Command::none()
-            }
+            },
             Message::ProgressChanged(progress) => {
                 self.temp_progress = Some(progress);
                 Command::none()
-            }
+            },
             Message::SaveProgress => {
                 if !self.is_authenticated {
                     self.error = Some("You must be logged in to save progress".to_string());
                     return Command::none();
                 }
 
-                if let (
-                    Some(anime),
-                    Some(progress),
-                    Some(status),
-                    Some(score),
-                    Some(progress_val),
-                ) = (
-                    &self.anime,
-                    &self.user_progress,
-                    &self.temp_status,
-                    &self.temp_score,
-                    &self.temp_progress,
-                ) {
+                if let (Some(anime), Some(progress), Some(status), Some(score), Some(progress_val)) =
+                (&self.anime, &self.user_progress, &self.temp_status, &self.temp_score, &self.temp_progress) {
+
                     self.is_saving = true;
 
                     // Prepare update parameters
@@ -389,27 +367,24 @@ impl DetailsScreen {
 
                     Command::perform(
                         async move {
-                            match client
-                                .update_media_list(
+                            match client.update_media_list(
                                     entry_id,
                                     media_id,
                                     status_enum,
                                     Some(*score as f64),
                                     Some(*progress_val),
-                                )
-                                .await
-                            {
+                                ).await {
                                 Ok(_) => Ok(()),
                                 Err(e) => Err(e.to_string()),
                             }
                         },
-                        Message::ProgressSaved,
+                        Message::ProgressSaved
                     )
                 } else {
                     self.error = Some("Missing required data to save progress".to_string());
                     Command::none()
                 }
-            }
+            },
             Message::ProgressSaved(result) => {
                 self.is_saving = false;
 
@@ -418,25 +393,25 @@ impl DetailsScreen {
                         // Update user_progress with temporary values
                         if let Some(progress) = &mut self.user_progress {
                             if let (Some(status), Some(score), Some(progress_val)) =
-                                (&self.temp_status, &self.temp_score, &self.temp_progress)
-                            {
+                                (&self.temp_status, &self.temp_score, &self.temp_progress) {
+
                                 progress.status = status.clone();
                                 progress.score = *score;
                                 progress.progress = *progress_val;
                             }
                         }
-                    }
+                    },
                     Err(e) => {
                         self.error = Some(format!("Failed to save progress: {}", e));
-                    }
+                    },
                 }
 
                 Command::none()
-            }
+            },
             Message::Error(e) => {
                 self.error = Some(e);
                 Command::none()
-            }
+            },
         }
     }
 
@@ -446,7 +421,7 @@ impl DetailsScreen {
                 text("Loading anime details...")
                     .size(20)
                     .width(Length::Fill)
-                    .horizontal_alignment(iced::alignment::Horizontal::Center),
+                    .horizontal_alignment(iced::alignment::Horizontal::Center)
             )
             .width(Length::Fill)
             .padding(40)
@@ -461,27 +436,29 @@ impl DetailsScreen {
                 content = content.push(
                     container(
                         text(error)
-                            .style(iced::theme::Text::Color(iced::Color::from_rgb(
-                                0.8, 0.2, 0.2,
-                            )))
-                            .size(16),
+                            .style(iced::theme::Text::Color(iced::Color::from_rgb(0.8, 0.2, 0.2)))
+                            .size(16)
                     )
                     .width(Length::Fill)
-                    .padding(10),
+                    .padding(10)
                 );
             }
 
             // Title and banner area
             let title_section = column![
                 text(&anime.title).size(30),
+
                 if let Some(english) = &anime.english_title {
-                    container(text(english).size(20)).into()
+                    let english_text: Element<Message> = container(text(english).size(20)).into();
+                    english_text
                 } else {
                     container(text("")).into()
                 },
+
                 row![
                     text(&anime.format).size(16),
                     text(&anime.status).size(16),
+
                     if let Some(season) = &anime.season {
                         if let Some(year) = anime.year {
                             container(text(format!("{} {}", season, year)).size(16)).into()
@@ -495,11 +472,10 @@ impl DetailsScreen {
                     }
                 ]
                 .spacing(10),
+
                 text(format!("⭐ {:.1} / 10", anime.score * 10.0))
                     .size(16)
-                    .style(iced::theme::Text::Color(iced::Color::from_rgb(
-                        1.0, 0.8, 0.0
-                    ))),
+                    .style(iced::theme::Text::Color(iced::Color::from_rgb(1.0, 0.8, 0.0))),
             ]
             .spacing(5);
 
@@ -684,7 +660,7 @@ impl DetailsScreen {
         .spacing(10)
     );
 
-    // Character preview
+    // Characters preview
     if !anime.character_previews.is_empty() {
         let mut character_section = column![
             text("Characters").size(20),

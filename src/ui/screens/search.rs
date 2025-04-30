@@ -2,7 +2,6 @@ use iced::widget::{button, column, container, row, scrollable, text, text_input}
 use iced::{Alignment, Command, Element, Length};
 
 use crate::api::client::AniListClient;
-use crate::utils::error::AppError;
 
 // Search result item
 #[derive(Debug, Clone)]
@@ -91,7 +90,9 @@ impl SearchScreen {
                         self.has_next_page = has_next_page;
                         self.error = None;
                     }
-                    Err(e) => self.error = Some(format!("Search failed: {}", e)),
+                    Err(e) => {
+                        self.error = Some(format!("Search failed: {}", e));
+                    }
                 }
 
                 Command::none()
@@ -146,8 +147,11 @@ impl SearchScreen {
                                         .and_then(|img| img.medium)
                                         .unwrap_or_default();
 
-                                    // Extract format
-                                    let format = media.format.unwrap_or_default();
+                                    // Convert format enum to string
+                                    let format = match media.format {
+                                        Some(f) => format!("{:?}", f),
+                                        None => "Unknown".to_string(),
+                                    };
 
                                     Some(SearchResult {
                                         id: media.id as i32,
@@ -156,7 +160,7 @@ impl SearchScreen {
                                         format,
                                         episodes: media.episodes.map(|e| e as i32),
                                         year: media.season_year.map(|y| y as i32),
-                                        score: media.average_score.map(|s| s as f64),
+                                        score: media.average_score,
                                     })
                                 })
                                 .collect();
@@ -266,7 +270,7 @@ impl SearchScreen {
         }
 
         // Loading indicator
-        let loading_indicator = if self.is_loading && self.results.is_empty() {
+        let loading_indicator: Element<Message> = if self.is_loading && self.results.is_empty() {
             container(text("Searching...").size(18))
                 .width(Length::Fill)
                 .center_x()
@@ -277,7 +281,7 @@ impl SearchScreen {
         };
 
         // Error message if any
-        let error_display = if let Some(error) = &self.error {
+        let error_display: Element<Message> = if let Some(error) = &self.error {
             container(
                 text(error)
                     .style(iced::theme::Text::Color(iced::Color::from_rgb(

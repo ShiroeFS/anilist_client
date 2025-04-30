@@ -1,4 +1,4 @@
-use iced::subscription;
+use iced::time::every;
 use iced::widget::{button, column, container, row, scrollable, text, text_input};
 use iced::{Application, Command, Element, Length, Settings, Subscription, Theme};
 use std::sync::{Arc, Mutex};
@@ -7,11 +7,6 @@ use crate::api::auth::AuthManager;
 use crate::api::client::AniListClient;
 use crate::data::database::Database;
 use crate::ui::components::auth::{AuthComponent, Message as AuthMessage};
-use crate::ui::screens::details::DetailsScreen;
-use crate::ui::screens::home::HomeScreen;
-use crate::ui::screens::profile::ProfileScreen;
-use crate::ui::screens::search::SearchScreen;
-use crate::ui::screens::settings::SettingsScreen;
 use crate::utils::config::AuthConfig;
 
 // Application screens
@@ -95,6 +90,7 @@ impl AniListApp {
     pub fn new(client: AniListClient, db: Arc<Mutex<Database>>, auth_config: AuthConfig) -> Self {
         // Create auth manager
         let auth_manager = if let Ok(db_guard) = db.lock() {
+            // Convert from utils::config::AuthConfig to api::auth::AuthConfig
             AuthManager::new(auth_config, db_guard.clone())
         } else {
             // Fallback in case we can't get the lock
@@ -155,18 +151,20 @@ impl Application for AniListApp {
     fn new(_flags: ()) -> (Self, Command<Message>) {
         // This should not be called directly, but we need to provide a default
         // implementation to satisfy the trait.
+        let default_db =
+            Database::new().unwrap_or_else(|_| panic!("Failed to initialize database"));
+        let db_arc = Arc::new(Mutex::new(default_db.clone()));
+
         let default_app = Self {
             api_client: AniListClient::new(),
-            db: Arc::new(Mutex::new(
-                Database::new().unwrap_or_else(|_| panic!("Failed to initialize database")),
-            )),
+            db: db_arc,
             auth_component: AuthComponent::new(AuthManager::new(
                 AuthConfig {
                     client_id: "default".to_string(),
                     client_secret: "default".to_string(),
                     redirect_uri: "http://localhost:8080/callback".to_string(),
                 },
-                Database::new().unwrap_or_else(|_| panic!("Failed to initialize database")),
+                default_db,
             )),
             current_screen: Screen::Home,
             screen_history: Vec::new(),
@@ -265,19 +263,23 @@ impl Application for AniListApp {
                                         if let Some(user) = data.user {
                                             let avatar_url = user
                                                 .avatar
-                                                .and_then(|a| a.large.or(a.medium))
+                                                .as_ref()
+                                                .and_then(|a| a.large.clone().or(a.medium.clone()))
                                                 .unwrap_or_default();
 
-                                            let anime_count = user
-                                                .statistics
-                                                .and_then(|s| s.anime)
+                                            // Clone the statistics before using it multiple times
+                                            let statistics = user.statistics.clone();
+
+                                            let anime_count = statistics
+                                                .as_ref()
+                                                .and_then(|s| s.anime.as_ref())
                                                 .map(|a| a.count)
                                                 .unwrap_or(0)
                                                 as i32;
 
-                                            let manga_count = user
-                                                .statistics
-                                                .and_then(|s| s.manga)
+                                            let manga_count = statistics
+                                                .as_ref()
+                                                .and_then(|s| s.manga.as_ref())
                                                 .map(|m| m.count)
                                                 .unwrap_or(0)
                                                 as i32;
@@ -329,12 +331,8 @@ impl Application for AniListApp {
                 // Navigate to search screen with the current query
                 self.navigate_to(Screen::Search);
 
-                let query = self.search_query.clone();
-                let client = self.api_client.clone();
-
-                self.is_loading = true;
-
-                // This command would be handled by the Search screen component
+                // In a real implementation, this would actually perform the search
+                // but we're just navigating for now
                 Command::none()
             }
             Message::AnimeLoaded(result) => {
@@ -432,14 +430,14 @@ impl Application for AniListApp {
 
         // Error message if any
         let error_view = if let Some(error) = &self.error {
-            container(
-                text(error).style(iced::theme::Text::Color(iced::Color::from_rgb(
-                    0.8, 0.2, 0.2,
-                ))),
-            )
+            let error_container: Element<Message> = container(text(error).style(
+                iced::theme::Text::Color(iced::Color::from_rgb(0.8, 0.2, 0.2)),
+            ))
             .padding(10)
             .width(Length::Fill)
-            .into()
+            .into();
+
+            error_container
         } else {
             container(text(""))
                 .width(Length::Fill)
@@ -563,15 +561,11 @@ impl Application for AniListApp {
         // Back button if we're not on the home screen
         let back_button = if self.current_screen != Screen::Home && !self.screen_history.is_empty()
         {
-            container(
-                button(text("<- Back"))
-                    .on_press(Message::GoBack)
-                    .padding(10),
-            )
-            .padding(10)
-            .width(Length::Fill)
-            .align_x(iced::alignment::Horizontal::Left)
-            .into()
+            container(button(text("← Back")).on_press(Message::GoBack).padding(10))
+                .padding(10)
+                .width(Length::Fill)
+                .align_x(iced::alignment::Horizontal::Left)
+                .into()
         } else {
             container(text("")).width(Length::Fill).into()
         };
@@ -585,6 +579,6 @@ impl Application for AniListApp {
 
     fn subscription(&self) -> Subscription<Self::Message> {
         // Create a periodic timer to check auth status
-        subscription::every(std::time::Duration::from_secs(300)).map(|_| Message::Tick)
+        every(std::time::Duration::from_secs(300)).map(|_| Message::Tick)
     }
 }
