@@ -449,7 +449,7 @@ impl Application for AniListApp {
         let content = match &self.current_screen {
             Screen::Home => {
                 // For now, just a placeholder
-                let home_content = column![
+                let home_content: Element<Message> = column![
                     text("Welcome to AniList Desktop").size(30),
                     text("Browse and track your anime and manga in one place.").size(18),
                 ]

@@ -1,4 +1,4 @@
-use iced::widget::{column, container, row, scrollable, text};
+use iced::widget::{column, container, scrollable, text};
 use iced::{Command, Element, Length};
 
 use crate::api::client::AniListClient;
@@ -136,7 +136,7 @@ impl HomeScreen {
                     },
                     |result| {
                         match result {
-                            Ok((user_id, username, entries)) => {
+                            Ok((_, _, entries)) => {
                                 Message::UserDataLoaded(Ok(entries))
                             },
                             Err(e) => {
@@ -225,7 +225,7 @@ impl HomeScreen {
             // Display the user's currently watching list
             column![
                 text("Currently Watching").size(30),
-                // Create a new MediaList component and hold a reference to it
+                // Create a MediaList component and map its messages
                 MediaList::new(self.currently_watching.clone())
                     .on_select(|id| MediaListMessage::Selected(id))
                     .view()
@@ -248,14 +248,15 @@ impl HomeScreen {
             content
         };
 
-        // Return the content in a scrollable container
-        scrollable(
-            container(content_with_error)
-                .width(Length::Fill)
-                .padding(20)
-        )
-        .height(Length::Fill)
-        .into()
+        // Create and own the container
+        let container_element = container(content_with_error)
+            .width(Length::Fill)
+            .padding(20);
+
+        // Return the scrollable container
+        scrollable(container_element)
+            .height(Length::Fill)
+            .into()
     }
 
     pub fn is_authenticated(&self) -> bool {

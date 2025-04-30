@@ -358,6 +358,26 @@ impl Database {
         self.conn.execute("DELETE FROM user_auth", [])?;
         Ok(())
     }
+
+    pub fn get_user_id(&self) -> Result<i32, rusqlite::Error> {
+        let mut stmt = self.conn.prepare(
+            "SELECT user_id FROM user_auth
+                ORDER BY updated_at DESC
+                LIMIT 1",
+        )?;
+
+        let user_id_iter = stmt.query_map([], |row| {
+            let user_id: i32 = row.get(0)?;
+            Ok(user_id)
+        })?;
+
+        let user_id = user_id_iter
+            .filter_map(Result::ok)
+            .next()
+            .ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)?;
+
+        Ok(user_id)
+    }
 }
 
 impl Clone for Database {

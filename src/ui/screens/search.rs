@@ -160,7 +160,7 @@ impl SearchScreen {
                                         format,
                                         episodes: media.episodes.map(|e| e as i32),
                                         year: media.season_year.map(|y| y as i32),
-                                        score: media.average_score,
+                                        score: media.average_score.map(|s| s as f64),
                                     })
                                 })
                                 .collect();

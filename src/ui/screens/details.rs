@@ -1,7 +1,7 @@
 use iced::widget::{button, column, container, row, scrollable, slider, text};
 use iced::{Alignment, Command, Element, Length};
 
-use crate::api::client::{AniListClient, update_media_list};
+use crate::api::client::{update_media_list, AniListClient};
 
 // Anime details
 #[derive(Debug, Clone)]
@@ -101,13 +101,15 @@ impl DetailsScreen {
     pub fn update(&mut self, message: Message) -> Command<Message> {
         match message {
             Message::LoadAnimeDetails(id) => {
-                let client = self.client.clone();
+                // Create two separate client instances for each async operation
+                let client1 = self.client.clone();
+                let client2 = self.client.clone();
 
                 Command::batch(vec![
                     // Load anime details
                     Command::perform(
                         async move {
-                            match client.get_anime_details(id).await {
+                            match client1.get_anime_details(id).await {
                                 Ok(data) => {
                                     if let Some(media) = data.media {
                                         // Convert to our model
@@ -225,12 +227,12 @@ impl DetailsScreen {
                     // Check authentication and load user progress if authenticated
                     Command::perform(
                         async move {
-                            let client_clone = client.clone();
+                            let client_clone = client2.clone();
 
                             // Check if user is authenticated
-                            if client.is_authenticated().await {
+                            if client2.is_authenticated().await {
                                 // Get viewer information to get user ID
-                                match client.get_viewer().await {
+                                match client2.get_viewer().await {
                                     Ok(viewer_data) => {
                                         if let Some(viewer) = viewer_data.viewer {
                                             let user_id = viewer.id as i32;
@@ -307,12 +309,13 @@ impl DetailsScreen {
             Message::UserProgressLoaded(result) => {
                 match result {
                     Ok(progress) => {
+                        let progress_clone = progress.clone();
                         self.user_progress = Some(progress);
                         self.is_authenticated = true;
                         // Initialize temporary values for editing
-                        self.temp_status = Some(progress.status.clone());
-                        self.temp_score = Some(progress.score);
-                        self.temp_progress = Some(progress.progress);
+                        self.temp_status = Some(progress_clone.status.clone());
+                        self.temp_score = Some(progress_clone.score);
+                        self.temp_progress = Some(progress_clone.progress);
                     },
                     Err(e) => {
                         if e == "Not authenticated" {
@@ -345,34 +348,35 @@ impl DetailsScreen {
 
                 if let (Some(anime), Some(progress), Some(status), Some(score), Some(progress_val)) =
                 (&self.anime, &self.user_progress, &self.temp_status, &self.temp_score, &self.temp_progress) {
-
                     self.is_saving = true;
 
-                    // Prepare update parameters
+                    // Extract and clone the required values for use in the async closure
                     let entry_id = progress.list_entry_id;
                     let media_id = Some(anime.id);
-
-                    // Convert status string to enum
-                    let status_enum = match status.as_str() {
-                        "CURRENT" => Some(update_media_list::MediaListStatus::CURRENT),
-                        "PLANNING" => Some(update_media_list::MediaListStatus::PLANNING),
-                        "COMPLETED" => Some(update_media_list::MediaListStatus::COMPLETED),
-                        "DROPPED" => Some(update_media_list::MediaListStatus::DROPPED),
-                        "PAUSED" => Some(update_media_list::MediaListStatus::PAUSED),
-                        "REPEATING" => Some(update_media_list::MediaListStatus::REPEATING),
-                        _ => None,
-                    };
-
+                    let status_str = status.clone();
+                    let score_val = *score;
+                    let progress_value = *progress_val;
                     let client = self.client.clone();
-
+                    
                     Command::perform(
                         async move {
+                            // Convert status string to enum
+                            let status_enum = match status_str.as_str() {
+                                "CURRENT" => Some(update_media_list::MediaListStatus::CURRENT),
+                                "PLANNING" => Some(update_media_list::MediaListStatus::PLANNING),
+                                "COMPLETED" => Some(update_media_list::MediaListStatus::COMPLETED),
+                                "DROPPED" => Some(update_media_list::MediaListStatus::DROPPED),
+                                "PAUSED" => Some(update_media_list::MediaListStatus::PAUSED),
+                                "REPEATING" => Some(update_media_list::MediaListStatus::REPEATING),
+                                _ => None,
+                            };
+
                             match client.update_media_list(
                                     entry_id,
                                     media_id,
                                     status_enum,
-                                    Some(*score as f64),
-                                    Some(*progress_val),
+                                    Some(score_val as f64),
+                                    Some(progress_value),
                                 ).await {
                                 Ok(_) => Ok(()),
                                 Err(e) => Err(e.to_string()),
@@ -459,16 +463,19 @@ impl DetailsScreen {
                     text(&anime.format).size(16),
                     text(&anime.status).size(16),
 
-                    if let Some(season) = &anime.season {
-                        if let Some(year) = anime.year {
-                            container(text(format!("{} {}", season, year)).size(16)).into()
-                        } else {
-                            container(text(season).size(16)).into()
+                    {
+                        // Handle season and year display
+                        if let Some(season) = &anime.season {
+                            if let Some(year) = anime.year {
+                                text(format!("{} {}", season, year)).size(16)
+                            } else {
+                                text(season).size(16)
+                            }
+                        } else if let Some(year) = anime.year {
+                            text(format!("{}", year)).size(16)
                         }
-                    } else if let Some(year) = anime.year {
-                        container(text(format!("{}", year)).size(16)).into()
                     } else {
-                        container(text("")).into()
+                        text("")
                     }
                 ]
                 .spacing(10),

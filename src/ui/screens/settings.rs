@@ -116,6 +116,36 @@ impl SettingsScreen {
                 Command::none()
             }
             Message::SaveConfig => {
+                self.is_saving = true;
+                self.error = None;
+                self.success_message = None;
+
+                // Create updated config
+                let mut updated_config = self.config.clone();
+                updated_config.auth_config.client_id = self.client_id.clone();
+                updated_config.auth_config.client_secret = self.client_secret.clone();
+                updated_config.auth_config.redirect_uri = self.redirect_uri.clone();
+                updated_config.offline_mode = self.offline_mode;
+                updated_config.language = self.language.clone();
+                updated_config.theme = match self.theme {
+                    Theme::Light => "light".to_string(),
+                    Theme::Dark => "dark".to_string(),
+                    Theme::System => "system".to_string(),
+                };
+
+                let config_clone = updated_config.clone();
+
+                Command::perform(
+                    async move {
+                        match save_config(&config_clone) {
+                            Ok(()) => Ok(()),
+                            Err(e) => Err(format!("Failed to save config: {}", e)),
+                        }
+                    },
+                    Message::ConfigSaved,
+                )
+            }
+            Message::ConfigSaved(result) => {
                 self.is_saving = false;
 
                 match result {
@@ -299,15 +329,16 @@ impl SettingsScreen {
         );
 
         // Language settings
-        let languages = vec!["en", "ja", "fr", "de", "es"];
         content = content.push(
-            column![
-                text("Language").size(18),
-                pick_list(languages, Some(&self.language), |lang: &str| {
-                    Message::LanguageChanged(lang.to_string())
-                })
+            column![text("Language").size(18), {
+                let languages = ["en", "ja", "fr", "de", "es"];
+                pick_list(
+                    languages,
+                    Some(&self.language as &str),
+                    Message::LanguageChanged,
+                )
                 .width(Length::Fixed(200.0))
-            ]
+            }]
             .spacing(10),
         );
 
