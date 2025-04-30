@@ -1,13 +1,20 @@
 use iced::time::every;
 use iced::widget::{button, column, container, row, scrollable, text, text_input};
-use iced::{Application, Command, Element, Length, Settings, Subscription, Theme};
+use iced::{settings, Application, Command, Element, Length, Settings, Subscription, Theme};
 use std::sync::{Arc, Mutex};
 
 use crate::api::auth::AuthManager;
-use crate::api::client::AniListClient;
+use crate::api::client::{self, AniListClient};
 use crate::data::database::Database;
 use crate::ui::components::auth::{AuthComponent, Message as AuthMessage};
+use crate::ui::screens::details::{DetailsScreen, Message as DetailsMessage};
+use crate::ui::screens::home::{HomeScreen, Message as HomeMessage};
+use crate::ui::screens::profile::{Message as ProfileMessage, ProfileScreen};
+use crate::ui::screens::search::{Message as SearchMessage, SearchScreen};
+use crate::ui::screens::settings::{Message as SettingsMessage, SettingsScreen};
 use crate::utils::config::AuthConfig;
+
+use super::screens::home;
 
 // Application screens
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,13 +37,16 @@ pub enum Message {
     Auth(AuthMessage),
     AuthStatusChanged(bool),
 
+    // Screen-specific messages
+    Home(HomeMessage),
+    Search(SearchMessage),
+    Details(DetailsMessage),
+    Profile(ProfileMessage),
+    Settings(SettingsMessage),
+
     // Search-related
     SearchQueryChanged(String),
     SearchSubmitted,
-
-    // Data loading
-    AnimeLoaded(Result<AnimeDetails, String>),
-    UserLoaded(Result<UserProfile, String>),
 
     // Error handling
     Error(String),
@@ -45,7 +55,6 @@ pub enum Message {
     Tick,
 }
 
-#[derive(Clone)]
 pub struct AniListApp {
     // Core components
     api_client: AniListClient,
@@ -57,59 +66,48 @@ pub struct AniListApp {
     screen_history: Vec<Screen>,
     search_query: String,
 
-    // Data
-    selected_anime: Option<AnimeDetails>,
-    user_profile: Option<UserProfile>,
+    // Screen modules
+    home_screen: HomeScreen,
+    search_screen: SearchScreen,
+    details_screen: DetailsScreen,
+    profile_screen: ProfileScreen,
+    settings_screen: SettingsScreen,
 
     // UI state
     is_loading: bool,
     error: Option<String>,
 }
 
-#[derive(Debug, Clone)]
-pub struct AnimeDetails {
-    pub id: i32,
-    pub title: String,
-    pub description: String,
-    pub episodes: i32,
-    pub genres: Vec<String>,
-    pub score: f32,
-    pub image_url: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct UserProfile {
-    pub id: i32,
-    pub name: String,
-    pub avatar_url: String,
-    pub anime_count: i32,
-    pub manga_count: i32,
-}
-
 impl AniListApp {
-    pub fn new(client: AniListClient, db: Arc<Mutex<Database>>, auth_config: AuthConfig) -> Self {
+    pub fn new(client: AniListClient, db: Database, auth_config: AuthConfig) -> Self {
+        // Wrap database in Arc<Mutex>
+        let db_arc = Arc::new(Mutex::new(db.clone()));
+
         // Create auth manager
-        let auth_manager = if let Ok(db_guard) = db.lock() {
-            // Convert from utils::config::AuthConfig to api::auth::AuthConfig
-            AuthManager::new(auth_config, db_guard.clone())
-        } else {
-            // Fallback in case we can't get the lock
-            let db_fallback = Database::new().expect("Failed to create database instance");
-            AuthManager::new(auth_config, db_fallback)
-        };
+        let auth_manager = AuthManager::new(auth_config, db.clone());
 
         // Create auth component
         let auth_component = AuthComponent::new(auth_manager);
 
+        // Create screen modules
+        let home_screen = HomeScreen::new(client.clone());
+        let search_screen = SearchScreen::new(client.clone());
+        let details_screen = DetailsScreen::new(client.clone());
+        let profile_screen = ProfileScreen::new(client.clone());
+        let settings_screen = SettingsScreen::new(db_arc.clone());
+
         Self {
             api_client: client,
-            db,
+            db: db_arc,
             auth_component,
             current_screen: Screen::Home,
             screen_history: Vec::new(),
             search_query: String::new(),
-            selected_anime: None,
-            user_profile: None,
+            home_screen,
+            search_screen,
+            details_screen,
+            profile_screen,
+            settings_screen,
             is_loading: false,
             error: None,
         }
@@ -155,8 +153,16 @@ impl Application for AniListApp {
             Database::new().unwrap_or_else(|_| panic!("Failed to initialize database"));
         let db_arc = Arc::new(Mutex::new(default_db.clone()));
 
+        let client = AniListClient::new();
+
+        let home_screen = HomeScreen::new(client.clone());
+        let search_screen = SearchScreen::new(client.clone());
+        let details_screen = DetailsScreen::new(client.clone());
+        let profile_screen = ProfileScreen::new(client.clone());
+        let settings_screen = SettingsScreen::new(db_arc.clone());
+
         let default_app = Self {
-            api_client: AniListClient::new(),
+            api_client: client,
             db: db_arc,
             auth_component: AuthComponent::new(AuthManager::new(
                 AuthConfig {
@@ -169,8 +175,11 @@ impl Application for AniListApp {
             current_screen: Screen::Home,
             screen_history: Vec::new(),
             search_query: String::new(),
-            selected_anime: None,
-            user_profile: None,
+            home_screen,
+            search_screen,
+            details_screen,
+            profile_screen,
+            settings_screen,
             is_loading: false,
             error: None,
         };
@@ -182,13 +191,7 @@ impl Application for AniListApp {
         match &self.current_screen {
             Screen::Home => String::from("AniList Desktop - Home"),
             Screen::Search => String::from("AniList Desktop - Search"),
-            Screen::Details(_) => {
-                if let Some(anime) = &self.selected_anime {
-                    format!("AniList Desktop - {}", anime.title)
-                } else {
-                    String::from("AniList Desktop - Anime Details")
-                }
-            }
+            Screen::Details(_) => String::from("AniList Desktop - Anime Details"),
             Screen::Profile(username) => format!("AniList Desktop - {}'s Profile", username),
             Screen::Settings => String::from("AniList Desktop - Settings"),
         }
@@ -197,111 +200,17 @@ impl Application for AniListApp {
     fn update(&mut self, message: Message) -> Command<Message> {
         match message {
             Message::ChangeScreen(screen) => {
-                self.navigate_to(screen);
+                self.navigate_to(screen.clone());
 
-                match &self.current_screen {
-                    Screen::Details(id) => {
-                        // Load anime details
-                        self.is_loading = true;
-                        let anime_id = *id;
-                        let client = self.api_client.clone();
-
-                        Command::perform(
-                            async move {
-                                match client.get_anime_details(anime_id).await {
-                                    Ok(data) => {
-                                        if let Some(media) = data.media {
-                                            let title = media.title.map_or_else(
-                                                || "Unknown Title".to_string(),
-                                                |t| {
-                                                    t.romaji.or(t.english).unwrap_or_else(|| {
-                                                        "Unknown Title".to_string()
-                                                    })
-                                                },
-                                            );
-
-                                            let image_url = media.cover_image.map_or_else(
-                                                || "".to_string(),
-                                                |img| img.large.unwrap_or_default(),
-                                            );
-
-                                            Ok(AnimeDetails {
-                                                id: anime_id,
-                                                title,
-                                                description: media.description.unwrap_or_default(),
-                                                episodes: media.episodes.unwrap_or(0) as i32,
-                                                genres: media
-                                                    .genres
-                                                    .unwrap_or_default()
-                                                    .into_iter()
-                                                    .filter_map(|g| g) // Filter out None values
-                                                    .collect(),
-                                                score: media.average_score.unwrap_or(0) as f32
-                                                    / 10.0,
-                                                image_url,
-                                            })
-                                        } else {
-                                            Err("Anime not found".to_string())
-                                        }
-                                    }
-                                    Err(err) => Err(err.to_string()),
-                                }
-                            },
-                            Message::AnimeLoaded,
-                        )
-                    }
-                    Screen::Profile(username) => {
-                        // Load user profile
-                        self.is_loading = true;
-                        let username = username.clone();
-                        let client = self.api_client.clone();
-
-                        Command::perform(
-                            async move {
-                                match client.get_user_profile(username).await {
-                                    Ok(data) => {
-                                        if let Some(user) = data.user {
-                                            let avatar_url = user
-                                                .avatar
-                                                .as_ref()
-                                                .and_then(|a| a.large.clone().or(a.medium.clone()))
-                                                .unwrap_or_default();
-
-                                            // Clone the statistics before using it multiple times
-                                            let statistics = user.statistics.clone();
-
-                                            let anime_count = statistics
-                                                .as_ref()
-                                                .and_then(|s| s.anime.as_ref())
-                                                .map(|a| a.count)
-                                                .unwrap_or(0)
-                                                as i32;
-
-                                            let manga_count = statistics
-                                                .as_ref()
-                                                .and_then(|s| s.manga.as_ref())
-                                                .map(|m| m.count)
-                                                .unwrap_or(0)
-                                                as i32;
-
-                                            Ok(UserProfile {
-                                                id: user.id as i32,
-                                                name: user.name,
-                                                avatar_url,
-                                                anime_count,
-                                                manga_count,
-                                            })
-                                        } else {
-                                            Err("User not found".to_string())
-                                        }
-                                    }
-                                    Err(err) => Err(err.to_string()),
-                                }
-                            },
-                            Message::UserLoaded,
-                        )
-                    }
-                    _ => Command::none(),
+                match &screen {
+                    Screen::Home => self.home_screen.init().map(Message::Home),
+                    Screen::Search => Command::none(),
+                    Screen::Details(id) => self.details_screen.load(*id).map(Message::Details),
+                    Screen::Profile(username) => self
+                        .profile_screen
+                        .load(username.clone())
+                        .map(Message::Profile),
+                    Screen::Settings => Command::none(),
                 }
             }
             Message::GoBack => {
@@ -314,11 +223,46 @@ impl Application for AniListApp {
                 // After authentication state changes, check auth status and refresh UI
                 Command::batch(vec![auth_cmd.map(Message::Auth), self.check_auth_status()])
             }
+            Message::Home(home_msg) => {
+                let cmd = self.home_screen.update(home_msg.clone());
+
+                match home_msg {
+                    HomeMessage::AnimeSelected(id) => {
+                        // Navigate to details screen
+                        self.navigate_to(Screen::Details(id));
+                        self.details_screen.load(id).map(Message::Details)
+                    }
+                    _ => cmd.map(Message::Home),
+                }
+            }
+            Message::Search(search_msg) => {
+                let cmd = self.search_screen.update(search_msg.clone());
+
+                match search_msg {
+                    SearchMessage::AnimeSelected(id) => {
+                        // Navigate to details screen
+                        self.navigate_to(Screen::Details(id));
+                        self.details_screen.load(id).map(Message::Details)
+                    }
+                    _ => cmd.map(Message::Search),
+                }
+            }
+            Message::Details(details_msg) => self
+                .details_screen
+                .update(details_msg)
+                .map(Message::Details),
+            Message::Profile(profile_msg) => self
+                .profile_screen
+                .update(profile_msg)
+                .map(Message::Profile),
+            Message::Settings(settings_msg) => self
+                .settings_screen
+                .update(settings_msg)
+                .map(Message::Settings),
             Message::AuthStatusChanged(is_authenticated) => {
                 // Refresh the home screen if authentication status changed
                 if is_authenticated && self.current_screen == Screen::Home {
-                    // Reload the home screen data
-                    Command::none() // Would trigger home screen data loading
+                    self.home_screen.init().map(Message::Home)
                 } else {
                     Command::none()
                 }
@@ -330,43 +274,12 @@ impl Application for AniListApp {
             Message::SearchSubmitted => {
                 // Navigate to search screen with the current query
                 self.navigate_to(Screen::Search);
-
-                // In a real implementation, this would actually perform the search
-                // but we're just navigating for now
-                Command::none()
+                self.search_screen
+                    .update(SearchMessage::QueryChanged(self.search_query.clone()))
+                    .map(Message::Search)
             }
-            Message::AnimeLoaded(result) => {
-                self.is_loading = false;
-
-                match result {
-                    Ok(details) => {
-                        self.selected_anime = Some(details);
-                        self.error = None;
-                    }
-                    Err(err) => {
-                        self.error = Some(format!("Failed to load anime details: {}", err));
-                    }
-                }
-
-                Command::none()
-            }
-            Message::UserLoaded(result) => {
-                self.is_loading = false;
-
-                match result {
-                    Ok(profile) => {
-                        self.user_profile = Some(profile);
-                        self.error = None;
-                    }
-                    Err(err) => {
-                        self.error = Some(format!("Failed to load user profile: {}", err));
-                    }
-                }
-
-                Command::none()
-            }
-            Message::Error(error) => {
-                self.error = Some(error);
+            Message::Error(e) => {
+                self.error = Some(e);
                 Command::none()
             }
             Message::Tick => {
@@ -423,21 +336,21 @@ impl Application for AniListApp {
         let auth_view = self.auth_component.view().map(Message::Auth);
 
         // Top area with navigation and search
-        let top_area = row![nav_bar, search_bar, auth_view,]
+        let top_area = row![nav_bar, search_bar, auth_view]
             .spacing(20)
             .padding(10)
             .width(Length::Fill);
 
         // Error message if any
         let error_view = if let Some(error) = &self.error {
-            let error_container: Element<Message> = container(text(error).style(
-                iced::theme::Text::Color(iced::Color::from_rgb(0.8, 0.2, 0.2)),
-            ))
+            container(
+                text(error).style(iced::theme::Text::Color(iced::Color::from_rgb(
+                    0.8, 0.2, 0.2,
+                ))),
+            )
             .padding(10)
             .width(Length::Fill)
-            .into();
-
-            error_container
+            .into()
         } else {
             container(text(""))
                 .width(Length::Fill)
@@ -446,116 +359,12 @@ impl Application for AniListApp {
         };
 
         // Main content area based on current screen
-        let content = match &self.current_screen {
-            Screen::Home => {
-                // For now, just a placeholder
-                let home_content: Element<Message> = column![
-                    text("Welcome to AniList Desktop").size(30),
-                    text("Browse and track your anime and manga in one place.").size(18),
-                ]
-                .spacing(20)
-                .padding(40)
-                .width(Length::Fill);
-
-                scrollable(home_content).height(Length::Fill).into()
-            }
-            Screen::Search => {
-                // For now, just a placeholder
-                let search_content = if self.is_loading {
-                    column![text("Searching...").size(24)]
-                } else {
-                    column![text("Search Results").size(24)]
-                };
-
-                scrollable(search_content.spacing(20).padding(40).width(Length::Fill))
-                    .height(Length::Fill)
-                    .into()
-            }
-            Screen::Details(id) => {
-                // Show anime details or loading indicator
-                let details_content = if self.is_loading {
-                    column![text("Loading anime details...").size(24)]
-                } else if let Some(anime) = &self.selected_anime {
-                    column![
-                        text(&anime.title).size(30),
-                        row![
-                            // This would be an actual image in a real implementation
-                            column![text("Image placeholder")].width(Length::Fixed(200.0)),
-                            column![
-                                text(&anime.description),
-                                text(format!("Episodes: {}", anime.episodes)),
-                                text(format!("Score: {:.1}", anime.score)),
-                                text(format!("Genres: {}", anime.genres.join(", ")))
-                            ]
-                            .spacing(10)
-                        ]
-                        .spacing(20)
-                    ]
-                } else {
-                    column![text("Anime not found").size(24)]
-                };
-
-                scrollable(details_content.spacing(20).padding(40).width(Length::Fill))
-                    .height(Length::Fill)
-                    .into()
-            }
-            Screen::Profile(username) => {
-                // Show profile or loading indicator
-                let profile_content = if self.is_loading {
-                    column![text(format!("Loading {}'s profile...", username)).size(24)]
-                } else if let Some(profile) = &self.user_profile {
-                    column![
-                        text(&profile.name).size(30),
-                        row![
-                            // This would be an actual avatar image in a real implementation
-                            column![text("Avatar placeholder")].width(Length::Fixed(100.0)),
-                            column![
-                                text(format!("Anime: {}", profile.anime_count)),
-                                text(format!("Manga: {}", profile.manga_count)),
-                            ]
-                            .spacing(10)
-                        ]
-                        .spacing(20)
-                    ]
-                } else {
-                    column![text(format!("User {} not found", username)).size(24)]
-                };
-
-                scrollable(profile_content.spacing(20).padding(40).width(Length::Fill))
-                    .height(Length::Fill)
-                    .into()
-            }
-            Screen::Settings => {
-                // Settings screen
-                let settings_content = column![
-                    text("Settings").size(30),
-                    // Theme selection
-                    text("Theme").size(18),
-                    row![
-                        button(text("Light")).padding(10),
-                        button(text("Dark")).padding(10),
-                        button(text("System")).padding(10),
-                    ]
-                    .spacing(10),
-                    // API settings
-                    text("API Configuration").size(18),
-                    text("Client ID").size(14),
-                    text_input("Client ID", "").padding(10),
-                    text("Client Secret").size(14),
-                    text_input("Client Secret", "").padding(10),
-                    // Cache settings
-                    text("Cache").size(18),
-                    row![
-                        button(text("Clear Cache")).padding(10),
-                        button(text("Clear Auth Data")).padding(10),
-                    ]
-                    .spacing(10),
-                ]
-                .spacing(15)
-                .padding(40);
-
-                scrollable(settings_content).height(Length::Fill).into()
-            }
+        let content: Element<Message> = match &self.current_screen {
+            Screen::Home => self.home_screen.view().map(Message::Home),
+            Screen::Search => self.search_screen.view().map(Message::Search),
+            Screen::Details(_) => self.details_screen.view().map(Message::Details),
+            Screen::Profile(_) => self.profile_screen.view().map(Message::Profile),
+            Screen::Settings => self.settings_screen.view().map(Message::Settings),
         };
 
         // Back button if we're not on the home screen
@@ -571,7 +380,7 @@ impl Application for AniListApp {
         };
 
         // Main layout
-        container(column![top_area, error_view, back_button, content,].spacing(5))
+        container(column![top_area, error_view, back_button, content].spacing(5))
             .width(Length::Fill)
             .height(Length::Fill)
             .into()

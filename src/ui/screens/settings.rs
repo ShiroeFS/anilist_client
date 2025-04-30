@@ -2,12 +2,13 @@ use iced::widget::{
     button, column, container, pick_list, row, scrollable, text, text_input, toggler,
 };
 use iced::{Command, Element, Length};
+use std::borrow::Cow;
 use std::sync::{Arc, Mutex};
 
 use crate::data::database::Database;
 use crate::utils::config::{load_config, save_config, Config};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Theme {
     Light,
     Dark,
@@ -55,6 +56,7 @@ pub struct SettingsScreen {
     is_clearing_auth: bool,
     error: Option<String>,
     success_message: Option<String>,
+    available_languages: Vec<String>,
 }
 
 impl SettingsScreen {
@@ -72,6 +74,15 @@ impl SettingsScreen {
             _ => Theme::System,
         };
 
+        // Available languages
+        let available_languages = vec![
+            "en".to_string(),
+            "ja".to_string(),
+            "fr".to_string(),
+            "de".to_string(),
+            "es".to_string(),
+        ];
+
         Self {
             db,
             config: config.clone(),
@@ -86,6 +97,7 @@ impl SettingsScreen {
             is_clearing_auth: false,
             error: None,
             success_message: None,
+            available_languages,
         }
     }
 
@@ -301,7 +313,7 @@ impl SettingsScreen {
                     button(text("Light"))
                         .on_press(Message::ThemeSelected(Theme::Light))
                         .padding(10)
-                        .style(if matches!(self.theme, Theme::Light) {
+                        .style(if self.theme == Theme::Light {
                             iced::theme::Button::Primary
                         } else {
                             iced::theme::Button::Secondary
@@ -309,7 +321,7 @@ impl SettingsScreen {
                     button(text("Dark"))
                         .on_press(Message::ThemeSelected(Theme::Dark))
                         .padding(10)
-                        .style(if matches!(self.theme, Theme::Dark) {
+                        .style(if self.theme == Theme::Dark {
                             iced::theme::Button::Primary
                         } else {
                             iced::theme::Button::Secondary
@@ -317,7 +329,7 @@ impl SettingsScreen {
                     button(text("System"))
                         .on_press(Message::ThemeSelected(Theme::System))
                         .padding(10)
-                        .style(if matches!(self.theme, Theme::System) {
+                        .style(if self.theme == Theme::System {
                             iced::theme::Button::Primary
                         } else {
                             iced::theme::Button::Secondary
@@ -330,15 +342,15 @@ impl SettingsScreen {
 
         // Language settings
         content = content.push(
-            column![text("Language").size(18), {
-                let languages = ["en", "ja", "fr", "de", "es"];
+            column![
+                text("Language").size(18),
                 pick_list(
-                    languages,
-                    Some(&self.language as &str),
-                    Message::LanguageChanged,
+                    &self.available_languages,
+                    Some(self.language.clone()),
+                    Message::LanguageChanged
                 )
                 .width(Length::Fixed(200.0))
-            }]
+            ]
             .spacing(10),
         );
 

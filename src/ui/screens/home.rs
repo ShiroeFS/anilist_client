@@ -226,10 +226,16 @@ impl HomeScreen {
             column![
                 text("Currently Watching").size(30),
                 // Create a MediaList component and map its messages
-                MediaList::new(self.currently_watching.clone())
-                    .on_select(|id| MediaListMessage::Selected(id))
-                    .view()
-                    .map(Message::MediaListMessage)
+                {
+                    // First, clone the media list entries
+                    let entries_clone = self.currently_watching.clone();
+
+                    // Create a new element with the cloned data
+                    MediaList::new(entries_clone)
+                        .on_select(|id| MediaListMessage::Selected(id))
+                        .view()
+                        .map(Message::MediaListMessage)
+                    }
             ]
             .spacing(20)
             .padding(40)
@@ -248,7 +254,7 @@ impl HomeScreen {
             content
         };
 
-        // Create and own the container
+        // Create container element
         let container_element = container(content_with_error)
             .width(Length::Fill)
             .padding(20);

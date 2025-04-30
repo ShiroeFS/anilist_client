@@ -1,4 +1,3 @@
-use iced::advanced::Widget;
 use iced::widget::{column, container, row, scrollable, text};
 use iced::{Command, Element, Length};
 
@@ -431,8 +430,8 @@ impl ProfileScreen {
                 }
 
                 // Add any remaining items if row has content
-                let has_content = !matches!(row_content, row![]);
-                if has_content {
+                let has_remaining_content = row_content.children().count() > 0;
+                if has_remaining_content {
                     favorites_section = favorites_section.push(row_content);
                 }
 
@@ -473,8 +472,8 @@ impl ProfileScreen {
                 }
 
                 // Add any remaining items if row has content
-                let has_content = !matches!(row_content, row![]);
-                if has_content {
+                let has_remaining_content = row_content.children().count() > 0;
+                if has_remaining_content {
                     favorites_section = favorites_section.push(row_content);
                 }
 
@@ -516,8 +515,8 @@ impl ProfileScreen {
                 }
 
                 // Add any remaining items if row has content
-                let has_content = !matches!(row_content, row![]);
-                if has_content {
+                let has_remaining_content = row_content.children().count() > 0;
+                if has_remaining_content {
                     favorites_section = favorites_section.push(row_content);
                 }
 

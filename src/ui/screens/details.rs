@@ -463,17 +463,14 @@ impl DetailsScreen {
                     text(&anime.format).size(16),
                     text(&anime.status).size(16),
 
-                    {
-                        // Handle season and year display
-                        if let Some(season) = &anime.season {
-                            if let Some(year) = anime.year {
-                                text(format!("{} {}", season, year)).size(16)
-                            } else {
-                                text(season).size(16)
-                            }
-                        } else if let Some(year) = anime.year {
-                            text(format!("{}", year)).size(16)
+                    if let Some(season) = &anime.season {
+                        if let Some(year) = anime.year {
+                            text(format!("{} {}", season, year)).size(16)
+                        } else {
+                            text(season).size(16)
                         }
+                    } else if let Some(year) = anime.year {
+                        text(format!("{}", year)).size(16)
                     } else {
                         text("")
                     }
