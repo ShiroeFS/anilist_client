@@ -1,5 +1,6 @@
 use iced::widget::{column, container, row, scrollable, text};
 use iced::{Command, Element, Length};
+use iced_native::widget::Widget;
 
 use crate::api::client::AniListClient;
 
@@ -430,7 +431,7 @@ impl ProfileScreen {
                 }
 
                 // Add any remaining items if row has content
-                let has_remaining_content = row_content.children().count() > 0;
+                let has_remaining_content = !row_content.children().is_empty();
                 if has_remaining_content {
                     favorites_section = favorites_section.push(row_content);
                 }
@@ -472,7 +473,7 @@ impl ProfileScreen {
                 }
 
                 // Add any remaining items if row has content
-                let has_remaining_content = row_content.children().count() > 0;
+                let has_remaining_content = !row_content.children().is_empty();
                 if has_remaining_content {
                     favorites_section = favorites_section.push(row_content);
                 }
@@ -515,7 +516,7 @@ impl ProfileScreen {
                 }
 
                 // Add any remaining items if row has content
-                let has_remaining_content = row_content.children().count() > 0;
+                let has_remaining_content = !row_content.children().is_empty();
                 if has_remaining_content {
                     favorites_section = favorites_section.push(row_content);
                 }

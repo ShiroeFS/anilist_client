@@ -201,6 +201,7 @@ impl HomeScreen {
     }
 
     pub fn view(&self) -> Element<Message> {
+        // Create content based on state
         let content = if self.is_loading {
             column![
                 text("Loading your anime list...").size(20)
@@ -222,20 +223,20 @@ impl HomeScreen {
             .spacing(20)
             .padding(40)
         } else {
-            // Display the user's currently watching list
+            // Create a standalone MediaList widget with our data
+            // Clone the data first to avoid lifetime issues
+            let media_list = {
+                let entries = self.currently_watching.clone();
+                MediaList::new(entries)
+                    .on_select(|id| MediaListMessage::Selected(id))
+                    .view()
+                    .map(Message::MediaListMessage)
+            };
+
+            // Return a column with title and the media list widget
             column![
                 text("Currently Watching").size(30),
-                // Create a MediaList component and map its messages
-                {
-                    // First, clone the media list entries
-                    let entries_clone = self.currently_watching.clone();
-
-                    // Create a new element with the cloned data
-                    MediaList::new(entries_clone)
-                        .on_select(|id| MediaListMessage::Selected(id))
-                        .view()
-                        .map(Message::MediaListMessage)
-                    }
+                media_list
             ]
             .spacing(20)
             .padding(40)
@@ -254,12 +255,12 @@ impl HomeScreen {
             content
         };
 
-        // Create container element
+        // Create a container
         let container_element = container(content_with_error)
             .width(Length::Fill)
             .padding(20);
 
-        // Return the scrollable container
+        // Create and return a scrollable, properly owned element
         scrollable(container_element)
             .height(Length::Fill)
             .into()
