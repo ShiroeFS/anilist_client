@@ -42,26 +42,12 @@ impl HomeScreen {
         Command::perform(async { () }, |_| Message::LoadUserData)
     }
 
-    pub fn update(&mut self, message: Message) -> Command<Message> {
-        match message {
-            Message::LoadUserData => {
-                // First, check if we're authenticated
-                let client = self.client.clone();
-                self.error = Some(e);
-                self.is_loading = false;
-                Command::none()
-            },
-        }
-    }
-
     pub fn view(&self) -> Element<Message> {
         // Create content based on state
         let content = if self.is_loading {
-            column![
-                text("Loading your anime list...").size(20)
-            ]
-            .spacing(20)
-            .padding(40)
+            column![text("Loading your anime list...").size(20)]
+                .spacing(20)
+                .padding(40)
         } else if !self.is_authenticated {
             column![
                 text("Welcome to AniList Desktop").size(30),
@@ -94,9 +80,11 @@ impl HomeScreen {
         let content_with_error = if let Some(error) = &self.error {
             column![
                 text(error)
-                    .style(iced::theme::Text::Color(iced::Color::from_rgb(0.8, 0.2, 0.2)))
+                    .style(iced::theme::Text::Color(iced::Color::from_rgb(
+                        0.8, 0.2, 0.2
+                    )))
                     .size(16),
-                    content
+                content
             ]
             .spacing(20)
         } else {
@@ -109,16 +97,22 @@ impl HomeScreen {
             .padding(20);
 
         // Create scrollable element with a separately owned container to avoid reference issues
-        let scrollable_element = scrollable(container_element)
-            .height(Length::Fill);
+        let scrollable_element = scrollable(container_element).height(Length::Fill);
 
-        // Return element without borrowin
+        // Return element without borrowing
         Element::from(scrollable_element)
     }
 
     pub fn is_authenticated(&self) -> bool {
         self.is_authenticated
     }
+
+    pub fn update(&mut self, message: Message) -> Command<Message> {
+        match message {
+            Message::LoadUserData => {
+                // First, check if we're authenticated
+                let client = self.client.clone();
+                self.is_loading = true;
 
                 Command::perform(
                     async move {
@@ -257,68 +251,5 @@ impl HomeScreen {
                 Command::none()
             }
         }
-    }
-
-    pub fn view(&self) -> Element<Message> {
-        // Create content based on state
-        let content = if self.is_loading {
-            column![text("Loading your anime list...").size(20)]
-                .spacing(20)
-                .padding(40)
-        } else if !self.is_authenticated {
-            column![
-                text("Welcome to AniList Desktop").size(30),
-                text("Please log in to see your anime list").size(18),
-            ]
-            .spacing(20)
-            .padding(40)
-        } else if self.currently_watching.is_empty() {
-            column![
-                text("Welcome to AniList Desktop").size(30),
-                text("You don't have any anime in your 'Currently Watching' list").size(18),
-            ]
-            .spacing(20)
-            .padding(40)
-        } else {
-            // Create a MediaList widget with our data
-            // Make an owned copy of the data to avoid borrowing issues
-            let entries = self.currently_watching.clone();
-            column![
-                text("Currently Watching").size(30),
-                MediaList::new(entries)
-                    .on_select(|id| MediaListMessage::Selected(id))
-                    .view()
-                    .map(Message::MediaListMessage)
-            ]
-            .spacing(20)
-            .padding(40)
-        };
-
-        // Error message if any
-        let content_with_error = if let Some(error) = &self.error {
-            column![
-                text(error)
-                    .style(iced::theme::Text::Color(iced::Color::from_rgb(
-                        0.8, 0.2, 0.2
-                    )))
-                    .size(16),
-                content
-            ]
-            .spacing(20)
-        } else {
-            content
-        };
-
-        // Create a container
-        let container_element = container(content_with_error)
-            .width(Length::Fill)
-            .padding(20);
-
-        // Create and return a scrollable element
-        scrollable(container_element).height(Length::Fill).into()
-    }
-
-    pub fn is_authenticated(&self) -> bool {
-        self.is_authenticated
     }
 }
