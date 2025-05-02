@@ -38,10 +38,7 @@ impl HomeScreen {
     }
 
     pub fn init(&mut self) -> Command<Message> {
-        Command::perform(
-            async { () },
-            |_| Message::LoadUserData
-        )
+        Command::perform(async { () }, |_| Message::LoadUserData)
     }
 
     pub fn update(&mut self, message: Message) -> Command<Message> {
@@ -61,7 +58,7 @@ impl HomeScreen {
 
                                     // Now fetch the user's anime list
                                     match client.get_user_anime_list(
-                                        user_id, 
+                                        user_id,
                                     Some(crate::api::client::user_anime_list::MediaListStatus::CURRENT)
                                 ).await {
                                     Ok(list_data) => {
@@ -107,7 +104,7 @@ impl HomeScreen {
                                                                         }
                                                                     }),
                                                                 };
-    
+
                                                                 entries.push(media_list_entry);
                                                 }
                                                         }
@@ -123,7 +120,7 @@ impl HomeScreen {
                                 } else {
                                     Err("Could not get user information".to_string())
                                 }
-                            },
+                            }
                             Err(e) => {
                                 // Check if it's an authentication error
                                 if e.to_string().contains("Authentication required") {
@@ -131,25 +128,21 @@ impl HomeScreen {
                                 } else {
                                     Err(format!("Failed to get user: {}", e))
                                 }
-                            },
+                            }
                         }
                     },
-                    |result| {
-                        match result {
-                            Ok((_, _, entries)) => {
-                                Message::UserDataLoaded(Ok(entries))
-                            },
-                            Err(e) => {
-                                if e == "Not authenticated" {
-                                    Message::UserDataLoaded(Err(e))
-                                } else {
-                                    Message::Error(e)
-                                }
-                            },
+                    |result| match result {
+                        Ok((_, _, entries)) => Message::UserDataLoaded(Ok(entries)),
+                        Err(e) => {
+                            if e == "Not authenticated" {
+                                Message::UserDataLoaded(Err(e))
+                            } else {
+                                Message::Error(e)
+                            }
                         }
-                    }
+                    },
                 )
-            },
+            }
             Message::UserDataLoaded(result) => {
                 self.is_loading = false;
 
@@ -158,56 +151,48 @@ impl HomeScreen {
                         self.currently_watching = entries;
                         self.is_authenticated = true;
                         self.error = None;
-                    },
+                    }
                     Err(e) => {
                         if e == "Not authenticated" {
                             self.is_authenticated = false;
                         } else {
                             self.error = Some(e);
                         }
-                    },
+                    }
                 }
 
                 Command::none()
-            },
+            }
             Message::MediaListMessage(media_list_msg) => {
                 match media_list_msg {
                     MediaListMessage::Selected(id) => {
                         // The user selected an anime, propagate the message up
-                        Command::perform(
-                            async move { id },
-                            Message::AnimeSelected
-                        )
-                    },
+                        Command::perform(async move { id }, Message::AnimeSelected)
+                    }
                     MediaListMessage::CardClicked(id) => {
                         // The user clicked a card, propagate the message up
-                        Command::perform(
-                            async move { id },
-                            Message::AnimeSelected
-                        )
-                    },
+                        Command::perform(async move { id }, Message::AnimeSelected)
+                    }
                 }
-            },
+            }
             Message::AnimeSelected(_) => {
                 // This will be handled by the parent component
                 Command::none()
-            },
+            }
             Message::Error(e) => {
                 self.error = Some(e);
                 self.is_loading = false;
                 Command::none()
-            },
+            }
         }
     }
 
     pub fn view(&self) -> Element<Message> {
         // Create content based on state
         let content = if self.is_loading {
-            column![
-                text("Loading your anime list...").size(20)
-            ]
-            .spacing(20)
-            .padding(40)
+            column![text("Loading your anime list...").size(20)]
+                .spacing(20)
+                .padding(40)
         } else if !self.is_authenticated {
             column![
                 text("Welcome to AniList Desktop").size(30),
@@ -223,20 +208,15 @@ impl HomeScreen {
             .spacing(20)
             .padding(40)
         } else {
-            // Create a standalone MediaList widget with our data
-            // Clone the data first to avoid lifetime issues
-            let media_list = {
-                let entries = self.currently_watching.clone();
+            // Create a MediaList widget with our data
+            // Make an owned copy of the data to avoid borrowing issues
+            let entries = self.currently_watching.clone();
+            column![
+                text("Currently Watching").size(30),
                 MediaList::new(entries)
                     .on_select(|id| MediaListMessage::Selected(id))
                     .view()
                     .map(Message::MediaListMessage)
-            };
-
-            // Return a column with title and the media list widget
-            column![
-                text("Currently Watching").size(30),
-                media_list
             ]
             .spacing(20)
             .padding(40)
@@ -246,7 +226,9 @@ impl HomeScreen {
         let content_with_error = if let Some(error) = &self.error {
             column![
                 text(error)
-                    .style(iced::theme::Text::Color(iced::Color::from_rgb(0.8, 0.2, 0.2)))
+                    .style(iced::theme::Text::Color(iced::Color::from_rgb(
+                        0.8, 0.2, 0.2
+                    )))
                     .size(16),
                 content
             ]
@@ -260,10 +242,8 @@ impl HomeScreen {
             .width(Length::Fill)
             .padding(20);
 
-        // Create and return a scrollable, properly owned element
-        scrollable(container_element)
-            .height(Length::Fill)
-            .into()
+        // Create and return a scrollable element
+        scrollable(container_element).height(Length::Fill).into()
     }
 
     pub fn is_authenticated(&self) -> bool {

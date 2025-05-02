@@ -4,7 +4,7 @@ use iced::{settings, Application, Command, Element, Length, Settings, Subscripti
 use std::sync::{Arc, Mutex};
 
 use crate::api::auth::AuthManager;
-use crate::api::client::{self, AniListClient};
+use crate::api::client::AniListClient;
 use crate::data::database::Database;
 use crate::ui::components::auth::{AuthComponent, Message as AuthMessage};
 use crate::ui::screens::details::{DetailsScreen, Message as DetailsMessage};
@@ -13,8 +13,6 @@ use crate::ui::screens::profile::{Message as ProfileMessage, ProfileScreen};
 use crate::ui::screens::search::{Message as SearchMessage, SearchScreen};
 use crate::ui::screens::settings::{Message as SettingsMessage, SettingsScreen};
 use crate::utils::config::AuthConfig;
-
-use super::screens::home;
 
 // Application screens
 #[derive(Debug, Clone, PartialEq, Eq)]

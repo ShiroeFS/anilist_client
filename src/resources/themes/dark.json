@@ -1,0 +1,38 @@
+{
+  "name": "Dark",
+  "colors": {
+    "primary": "#A485FF",
+    "secondary": "#6C63FF",
+    "background": "#1A1B26",
+    "surface": "#24283B",
+    "text": "#C0CAF5",
+    "textSecondary": "#565F89",
+    "error": "#F7768E",
+    "success": "#9ECE6A",
+    "warning": "#E0AF68",
+    "info": "#7AA2F7"
+  },
+  "fonts": {
+    "regular": "Roboto-Regular",
+    "bold": "Roboto-Bold",
+    "italic": "Roboto-Italic",
+    "size": {
+      "small": 12,
+      "medium": 16,
+      "large": 20,
+      "xlarge": 28
+    }
+  },
+  "spacing": {
+    "small": 5,
+    "medium": 10,
+    "large": 20,
+    "xlarge": 40
+  },
+  "borderRadius": {
+    "small": 3,
+    "medium": 5,
+    "large": 10,
+    "round": 9999
+  }
+}

@@ -1,29 +1,34 @@
-use std::fmt;
+use thiserror::Error;
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum AppError {
+    #[error("API Error: {0}")]
     ApiError(String),
+
+    #[error("Database Error: {0}")]
     DatabaseError(String),
-    _AuthError(String),
-    _ConfigError(String),
+
+    #[error("Authentication Error: {0}")]
+    AuthError(String),
+
+    #[error("Configuration Error: {0}")]
+    ConfigError(String),
+
+    #[error("Network Error: {0}")]
     NetworkError(String),
-    _UiError(String),
-}
 
-impl fmt::Display for AppError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            AppError::ApiError(msg) => write!(f, "API Error: {}", msg),
-            AppError::DatabaseError(msg) => write!(f, "Database Error: {}", msg),
-            AppError::_AuthError(msg) => write!(f, "Authentication Error: {}", msg),
-            AppError::_ConfigError(msg) => write!(f, "Configuration Error: {}", msg),
-            AppError::NetworkError(msg) => write!(f, "Network Error: {}", msg),
-            AppError::_UiError(msg) => write!(f, "UI Error: {}", msg),
-        }
-    }
-}
+    #[error("UI Error: {0}")]
+    UiError(String),
 
-impl std::error::Error for AppError {}
+    #[error("I/O Error: {0}")]
+    IoError(#[from] std::io::Error),
+
+    #[error("Serialization/Deserialization Error: {0}")]
+    SerdeError(#[from] serde_json::Error),
+
+    #[error("Unknown Error: {0}")]
+    UnknownError(String),
+}
 
 // Convert from rusqlite errors
 impl From<rusqlite::Error> for AppError {
@@ -35,13 +40,44 @@ impl From<rusqlite::Error> for AppError {
 // Convert from reqwest errors
 impl From<reqwest::Error> for AppError {
     fn from(error: reqwest::Error) -> Self {
-        AppError::NetworkError(error.to_string())
+        if error.is_timeout() {
+            AppError::NetworkError(format!("Network timeout: {}", error))
+        } else if error.is_connect() {
+            AppError::NetworkError(format!("Connection failed: {}", error))
+        } else {
+            AppError::NetworkError(error.to_string())
+        }
     }
 }
 
-// Convert from serde_json errors
-impl From<serde_json::Error> for AppError {
-    fn from(error: serde_json::Error) -> Self {
-        AppError::ApiError(format!("JSON parsing error: {}", error))
+// Convert from OAuth2 errors
+impl From<oauth2::basic::BasicRequestTokenError<oauth2::reqwest::Error<reqwest::Error>>>
+    for AppError
+{
+    fn from(
+        error: oauth2::basic::BasicRequestTokenError<oauth2::reqwest::Error<reqwest::Error>>,
+    ) -> Self {
+        AppError::AuthError(format!("OAuth2 error: {}", error))
+    }
+}
+
+// Convert from URL parsing errors
+impl From<url::ParseError> for AppError {
+    fn from(error: url::ParseError) -> Self {
+        AppError::ConfigError(format!("URL parsing error: {}", error))
+    }
+}
+
+// Convert from Iced errors
+impl From<iced::Error> for AppError {
+    fn from(error: iced::Error) -> Self {
+        AppError::UiError(error.to_string())
+    }
+}
+
+// Convert from anyhow errors
+impl From<anyhow::Error> for AppError {
+    fn from(error: anyhow::Error) -> Self {
+        AppError::UnknownError(error.to_string())
     }
 }

@@ -1,12 +1,20 @@
 use anilist_client::app::App;
 use anilist_client::ui::AniListApp;
+use anilist_client::utils::logging;
+use anyhow::{Context, Result};
+use log::{error, info};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize the app
-    let app = App::new().await?;
+async fn main() -> Result<()> {
+    // Set up logger
+    logging::setup_logger().context("Failed to initialize logger")?;
 
-    println!("AniList Desktop Client v0.1.0");
+    info!("Starting AniList Desktop Client v0.1.0");
+
+    // Initialize the app
+    let app = App::new()
+        .await
+        .context("Failed to initialize application")?;
 
     // Check if CLI arguments were provided
     let args: Vec<String> = std::env::args().collect();
@@ -15,30 +23,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Handle CLI arguments
         match args[1].as_str() {
             "--test-auth" => {
-                println!("Testing authentication flow...");
+                info!("Testing authentication flow...");
 
-                if let Some(auth_manager) = app.get_auth_manager() {
-                    match auth_manager.authenticate().await {
-                        Ok(token) => {
-                            println!("Authentication successful!");
-                            println!("Access token: {}", token.access_token);
-                            if let Some(refresh_token) = token.refresh_token {
-                                println!("Refresh token received");
-                            }
-                            println!("Token expires in: {:?} seconds", token.expires_in);
+                let auth_manager = app
+                    .get_auth_manager()
+                    .context("Failed to get auth manager")?;
+
+                match auth_manager.authenticate().await {
+                    Ok(token) => {
+                        info!("Authentication successful!");
+                        info!("Access token: {}", token.access_token);
+                        if let Some(refresh_token) = &token.refresh_token {
+                            info!("Refresh token received");
                         }
-                        Err(e) => {
-                            eprintln!("Authentication failed: {}", e);
-                            return Err(e.into());
-                        }
+                        info!("Token expires in: {:?} seconds", token.expires_in);
                     }
-                } else {
-                    eprintln!("Could not initialize auth manager");
-                    return Err("Auth manager initialization failed".into());
+                    Err(e) => {
+                        error!("Authentication failed: {}", e);
+                        return Err(anyhow::anyhow!("Authentication failed: {}", e));
+                    }
                 }
             }
             "--test-api" => {
-                println!("Testing API access...");
+                info!("Testing API access...");
 
                 let client = app.get_api_client();
 
@@ -46,25 +53,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let is_authenticated = client.is_authenticated().await;
 
                 if !is_authenticated {
-                    println!("Not authenticated. Some features may not work.");
+                    info!("Not authenticated. Some features may not work.");
                 } else {
-                    println!("Successfully authenticated.");
+                    info!("Successfully authenticated.");
 
                     // Try to get viewer data
                     match client.get_viewer().await {
                         Ok(data) => {
                             if let Some(viewer) = data.viewer {
-                                println!("Logged in as: {}", viewer.name);
+                                info!("Logged in as: {}", viewer.name);
                             }
                         }
                         Err(e) => {
-                            eprintln!("Error fetching user data: {}", e);
+                            error!("Error fetching user data: {}", e);
                         }
                     }
                 }
 
                 // Test search functionality
-                println!("\nTesting search with query 'Shingeki no Kyojin'...");
+                info!("Testing search with query 'Shingeki no Kyojin'...");
                 match client
                     .search_anime("Shingeki no Kyojin".to_string(), Some(1), Some(5))
                     .await
@@ -72,11 +79,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Ok(results) => {
                         if let Some(page) = results.page {
                             if let Some(media_list) = page.media {
-                                println!("Found {} results:", media_list.len());
+                                info!("Found {} results:", media_list.len());
                                 for (i, media) in media_list.iter().enumerate() {
                                     if let Some(media) = media {
                                         if let Some(title) = &media.title {
-                                            println!(
+                                            info!(
                                                 "{}. {} (ID: {})",
                                                 i + 1,
                                                 title
@@ -92,7 +99,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                     Err(e) => {
-                        eprintln!("Search failed: {}", e);
+                        error!("Search failed: {}", e);
                     }
                 }
             }
@@ -107,20 +114,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             _ => {
                 println!("Unknown command: {}", args[1]);
                 println!("Use --help to see available commands");
+                return Err(anyhow::anyhow!("Unknown command: {}", args[1]));
             }
         }
     } else {
         // Launch the GUI application
-        println!("Starting GUI application...");
+        info!("Starting GUI application...");
 
         let ui_app = app.create_ui_app();
 
         if let Err(e) = AniListApp::launch() {
-            eprintln!("Application error: {}", e);
-            return Err(Box::new(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Failed to launch UI: {}", e),
-            )));
+            error!("Application error: {}", e);
+            return Err(anyhow::anyhow!("Failed to launch UI: {}", e));
         }
     }
 
