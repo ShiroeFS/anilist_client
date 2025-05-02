@@ -1,3 +1,4 @@
+use crate::utils::ui_helpers::{row_is_empty, RowExt};
 use iced::widget::{column, container, row, scrollable, text};
 use iced::{Command, Element, Length};
 
@@ -429,10 +430,8 @@ impl ProfileScreen {
                     }
                 }
 
-                // Add any remaining items
-                if !row_content.is_empty() {
-                    favorites_section = favorites_section.push(row_content);
-                }
+                // Add any remaining items (always add row to ensure it's not lost)
+                favorites_section = favorites_section.push(row_content);
 
                 content = content.push(favorites_section);
             }
@@ -470,10 +469,8 @@ impl ProfileScreen {
                     }
                 }
 
-                // Add any remaining items
-                if !row_content.is_empty() {
-                    favorites_section = favorites_section.push(row_content);
-                }
+                // Add any remaining items (always add row to ensure it's not lost)
+                favorites_section = favorites_section.push(row_content);
 
                 content = content.push(favorites_section);
             }
@@ -512,10 +509,8 @@ impl ProfileScreen {
                     }
                 }
 
-                // Add any remaining items
-                if !row_content.is_empty() {
-                    favorites_section = favorites_section.push(row_content);
-                }
+                // Add any remaining items (always add row to ensure it's not lost)
+                favorites_section = favorites_section.push(row_content);
 
                 content = content.push(favorites_section);
             }

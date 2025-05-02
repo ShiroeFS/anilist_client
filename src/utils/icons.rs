@@ -1,33 +1,35 @@
-use iced::widget::{svg, Svg};
+use iced::widget::svg::{self, Svg};
+use once_cell::sync::Lazy;
+use std::borrow::Cow;
 
 pub struct Icons;
 
 impl Icons {
-    pub fn logo() -> Svg {
+    pub fn logo<R: svg::Renderer>() -> Svg<R> {
         svg::Svg::new(Self::get_icon("logo.svg"))
     }
 
-    pub fn home() -> Svg {
+    pub fn home<R: svg::Renderer>() -> Svg<R> {
         svg::Svg::new(Self::get_icon("home.svg"))
     }
 
-    pub fn search() -> Svg {
+    pub fn search<R: svg::Renderer>() -> Svg<R> {
         svg::Svg::new(Self::get_icon("search.svg"))
     }
 
-    pub fn settings() -> Svg {
+    pub fn settings<R: svg::Renderer>() -> Svg<R> {
         svg::Svg::new(Self::get_icon("settings.svg"))
     }
 
-    pub fn user() -> Svg {
+    pub fn user<R: svg::Renderer>() -> Svg<R> {
         svg::Svg::new(Self::get_icon("user.svg"))
     }
 
-    pub fn play() -> Svg {
+    pub fn play<R: svg::Renderer>() -> Svg<R> {
         svg::Svg::new(Self::get_icon("play.svg"))
     }
 
-    pub fn star() -> Svg {
+    pub fn star<R: svg::Renderer>() -> Svg<R> {
         svg::Svg::new(Self::get_icon("star.svg"))
     }
 
@@ -44,11 +46,16 @@ impl Icons {
             // If we don't have an embedded icon, try to load from resources
             _ => {
                 let path = format!("resources/icons/{}", name);
-                if let Ok(data) = std::fs::read(&path) {
-                    svg::Handle::from_memory(&data)
-                } else {
-                    log::warn!("Icon not found: {}", name);
-                    svg::Handle::from_memory(DEFAULT_ICON.as_bytes())
+                match std::fs::read(&path) {
+                    Ok(data) => {
+                        // Clone the data to make it 'static
+                        let data_owned = data.to_vec();
+                        svg::Handle::from_memory(data_owned)
+                    }
+                    Err(_) => {
+                        log::warn!("Icon not found: {}", name);
+                        svg::Handle::from_memory(DEFAULT_ICON.as_bytes())
+                    }
                 }
             }
         }
